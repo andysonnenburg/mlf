@@ -1,0 +1,42 @@
+name:                mlf
+version:             0.1.0.0
+-- synopsis:            
+-- description:         
+license:             BSD3
+license-file:        LICENSE
+author:              Andy Sonnenburg
+maintainer:          Andy Sonnenburg <andy22286@gmail.com>
+-- copyright:           
+category:            Language
+build-type:          Simple
+cabal-version:       >=1.8
+
+executable mlf
+  main-is: mlf.hs      
+  other-modules:
+    Lex,
+    Loc,
+    Parse,
+    Parser,
+    Scope,
+    Stream,
+    Supply,
+    Token,
+    Type.Common,
+    Type.Graphic,
+    Type.Syntactic,
+    Type.Restricted
+  build-depends:
+    base ==4.6.*,
+    array,
+    bytestring,
+    comonad,
+    cmdargs,
+    mtl,
+    semigroups,
+    semigroupoids,
+    text,
+    transformers,
+    utf8-string
+  ghc-options: -Wall
+  build-tools: alex, happy

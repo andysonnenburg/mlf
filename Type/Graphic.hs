@@ -1,0 +1,3 @@
+module Type.Graphic
+       (
+       ) where
