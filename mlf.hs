@@ -42,11 +42,7 @@ main = do
         hPrint stderr e
         exitFailure
     Echo {..} -> case runParser parse (ByteString.fromString string) of
-      Right t ->
-        print $
-        flip runSupply (flip Var Nothing <$> Stream.enumFrom zero) $
-        Restricted.fromSyntactic =<<
-        scope t
+      Right t -> print t
       Left e -> do
         hPrint stderr e
         exitFailure

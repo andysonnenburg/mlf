@@ -5,13 +5,13 @@
 module Type.Syntactic
        ( MonoType (..)
        , PolyType (..)
-       , BindingType (..)
+       , BindingFlag (..)
        ) where
 
 import Data.Foldable
 import Data.Traversable
 
-import Type.Common
+import Type.BindingFlag
 
 data MonoType a
   = Var a
@@ -21,5 +21,5 @@ data MonoType a
 data PolyType a
   = MonoType (MonoType a)
   | Bottom
-  | Forall a BindingType (PolyType a) (PolyType a)
+  | Forall a BindingFlag (PolyType a) (PolyType a)
   deriving (Show, Functor, Foldable, Traversable)
