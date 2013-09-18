@@ -1,51 +1,91 @@
 {-# LANGUAGE
     DeriveDataTypeable
+  , FlexibleInstances
   , LambdaCase
+  , MultiParamTypeClasses
   , RecordWildCards #-}
 module Main (main) where
 
 import Control.Applicative
+import Control.Category ((<<<))
+import Control.Monad
+import Control.Monad.Error hiding (Error (..))
+import Control.Monad.ST.Safe
 
 import Data.ByteString.UTF8 as ByteString
+import Data.Text
 
 import System.Console.CmdArgs
 import System.Environment (getProgName)
-import System.Exit (exitFailure)
-import System.IO (hPrint, stderr)
 
+import Hoist
+import Loc
 import Parse
 import Parser
-import Scope
+import Rename
 import qualified Stream
 import Supply
+import qualified Type.Graphic as Graphic
 import qualified Type.Restricted as Restricted
-import Var
+import Unify
 
 data MLF
-  = Parse { string :: String }
-  | Echo { string :: String }
-  | Permissions { string :: String } deriving (Typeable, Data)
+  = Echo { input :: String }
+  | Unify { input :: String } deriving (Typeable, Data)
 
 mlf :: String -> MLF
 mlf progName =
-  modes [ Parse { string = def &= argPos 0 &= typ "STRING" }
-        , Echo { string = def &= argPos 0 &= typ "STRING" }
-        , Permissions { string = def &= argPos 0 &= typ "STRING" }
+  modes [ Echo (def &= argPos 0 &= typ "STRING")
+        , Unify (def &= argPos 0 &= typ "STRING")
         ] &= program progName
 
 main :: IO ()
-main = do
-  mlf <$> getProgName >>= cmdArgs >>= \ case
-    Parse {..} -> case runParser parse (ByteString.fromString string) of
-      Right t -> print t
-      Left e -> do
-        hPrint stderr e
-        exitFailure
-    Echo {..} -> case runParser parse (ByteString.fromString string) of
-      Right t -> print t
-      Left e -> do
-        hPrint stderr e
-        exitFailure
+main = mlf <$> getProgName >>= cmdArgs >>= \ case
+  Echo {..} ->
+    print <<<
+    fmap (\ t -> runST (Graphic.toSyntactic =<< Graphic.fromRestricted t)) <<<
+    flip runSupplyT (Stream.enumFrom 0) <<<
+    Restricted.fromSyntactic <=<
+    throwsRenameError . rename <=<
+    throwsParseError . runParser parse $
+    ByteString.fromString input
 
-zero :: Integer
-zero = 0
+data Error
+  = ParseError !Loc !ParseError
+  | RenameError !(RenameError Text) deriving Show
+
+newtype Compiler s a = Compiler { unCompiler :: Either Error a } deriving Show
+
+instance Functor (Compiler s) where
+  fmap f = Compiler . fmap f . unCompiler
+
+instance Applicative (Compiler s) where
+  pure = Compiler . pure
+  f <*> a = Compiler $ unCompiler f <*> unCompiler a
+
+instance Monad (Compiler s) where
+  return = Compiler . return
+  m >>= f = Compiler $ unCompiler m >>= unCompiler . f
+
+instance MonadError (Loc, ParseError) (Compiler (Loc, ParseError)) where
+  throwError = Compiler . Left . uncurry ParseError
+  m `catchError` h = case unCompiler m of
+    Left (ParseError l e) -> h (l, e)
+    _ -> m
+
+instance MonadError (RenameError Text) (Compiler (RenameError Text)) where
+  throwError = Compiler . Left . RenameError
+  m `catchError` h = case unCompiler m of
+    Left (RenameError e) -> h e
+    _ -> m
+
+throwsRenameError :: MonadHoist t => t (Compiler (RenameError Text)) a -> t (Compiler s) a
+throwsRenameError = hoist (Compiler . unCompiler)
+
+throwsParseError :: MonadTrans t => Either (Loc, ParseError) a -> t (Compiler s) a
+throwsParseError = lift . Compiler . mapLeft (uncurry ParseError)
+
+mapLeft :: (e -> e') -> Either e a -> Either e' a
+mapLeft f = \ case
+  Left e -> Left (f e)
+  Right a -> Right a

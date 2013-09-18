@@ -6,16 +6,18 @@ import Control.Monad.ST.Safe
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 
-import Data.Function (fix)
 import Data.IntMap.Strict (IntMap, (!))
 import Data.IntSet (IntSet)
 import Data.Semigroup
 
-import Path (Path)
+import Prelude hiding (read)
+
+import Name
+import Path ((~=))
 import Type.Graphic
 import UnionFind
 
-unify :: Type s -> [Term s] -> MaybeT (ST s) (Type s)
+unify :: Type s a -> [Node s a] -> MaybeT (ST s) (Type s a)
 unify (t, t_b, t_bf) n = do
   p <- getPermissions t t_b t_bf
   S bots merged <- execStateT (traversePairs_ unify' n) initS
@@ -24,21 +26,23 @@ unify (t, t_b, t_bf) n = do
   let t_b' = binders t_b merged grafted
   traverseWithKey_ (\ i x ->
     unlessGreen (p!i) $
-      unlessBotM (lift (readSet x)) $
+      unlessBotM (lift (read =<< find x)) $
         empty) bots
-  traverseTerm_ (\ i ->
+  traverseNode_ (\ i ->
     whenRed (p!i) $
-      unless (sameHead (t_b!i) (t_b'!i)) $
+      unless (t_b!i ~= t_b'!i) $
         empty) t
-  traverseTerm_ (\ i ->
+  traverseNode_ (\ i ->
     whenRed (p!i) $
       unless (t_bf!i == t_bf'!i) $
         empty) t
   return (t, t_b', t_bf')
 
-unify' :: Term s -> Term s -> Unify s ()
-unify' (Term i1 x1) (Term i2 x2) =
-  (,) <$> readSet' x1 <*> readSet' x2 >>= \ case
+unify' :: Node s a -> Node s a -> Unify a s ()
+unify' (Node i1 x1) (Node i2 x2) = do
+  r1 <- find' x1
+  r2 <- find' x2
+  when (r1 /= r2) $ (,) <$> read' r1 <*> read' r2 >>= \ case
     (Bot, Bot) -> do
       markBot i1
       markBot i2
@@ -60,23 +64,23 @@ unify' (Term i1 x1) (Term i2 x2) =
 bindingFlags :: BindingFlags -> IntMap IntSet -> BindingFlags
 bindingFlags = undefined
 
-getGrafted :: Term s -> IntMap a -> Rebind s (IntMap Int)
+getGrafted :: Node s a -> IntMap b -> Rebind s (IntMap Int)
 getGrafted = undefined
 
 binders :: Binders -> IntMap IntSet -> IntMap Int -> Binders
 binders = undefined
 
-type Unify s = StateT (S s) (MaybeT (ST s))
+type Unify n s = StateT (S n s) (MaybeT (ST s))
 
-data S s = S (IntMap (Set s (UnlabelledTerm s))) (IntMap IntSet)
+data S n s = S (IntMap (Set s (Term s n))) (IntMap IntSet)
 
-initS :: S s
+initS :: S n s
 initS = undefined
 
-markBot :: Int -> Unify s ()
+markBot :: Name a -> Unify a s ()
 markBot = undefined
 
-markMerged :: Int -> Int -> Unify s ()
+markMerged :: Name a -> Name a -> Unify a s ()
 markMerged = undefined
 
 type Rebind s = MaybeT (ST s)
@@ -93,25 +97,25 @@ whenRed :: Monad m => Permission -> m () -> m ()
 whenRed R m = m
 whenRed _ _ = return ()
 
-getPermissions :: Term s -> Binders -> BindingFlags -> Rebind s Permissions
+getPermissions :: Node s a -> Binders -> BindingFlags -> Rebind s Permissions
 getPermissions = undefined
 
-traverseTerm_ :: (Int -> Rebind s a) -> Term s -> Rebind s ()
-traverseTerm_ = undefined
+traverseNode_ :: (Int -> Rebind s a) -> Node s n -> Rebind s ()
+traverseNode_ = undefined
 
-unlessBotM :: Monad m => m (UnlabelledTerm s) -> m () -> m ()
+unlessBotM :: Monad m => m (Term s a) -> m () -> m ()
 unlessBotM m n = m >>= \ case
   Bot -> return ()
   _ -> n
 
-readSet' :: Set s a -> Unify s a
-readSet' = lift . lift . readSet
+find' :: Set s a -> Unify n s (Ref s a)
+find' = lift . lift . find
 
-union' :: Semigroup a => Set s a -> Set s a -> Unify s ()
+read' :: Ref s a -> Unify n s a
+read' = lift . lift . read
+
+union' :: Semigroup a => Set s a -> Set s a -> Unify n s ()
 union' x y = lift $ lift $ union x y
-
-sameHead :: Path -> Path -> Bool
-sameHead = undefined
 
 traverseWithKey_ :: (Int -> a -> m b) -> IntMap a -> m ()
 traverseWithKey_ = undefined

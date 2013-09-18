@@ -6,11 +6,15 @@ module Path
        , length
        , toList
        , lca
+       , keep
+       , (~=)
        ) where
 
 import Data.Function (fix)
 
-import Prelude hiding (length)
+import Prelude hiding (head, length)
+
+infix 4 ~=
 
 data Path
   = Nil
@@ -35,7 +39,7 @@ empty = Nil
 cons :: Int -> Path -> Path
 {-# INLINE cons #-}
 cons x = \ case
-  (Cons n w t (Cons _ w' t' xs)) | w == w' -> Cons (n + 1) (2 * w + 1) (Bin x t t') xs
+  Cons n w t (Cons _ w' t' xs) | w == w' -> Cons (n + 1) (2 * w + 1) (Bin x t t') xs
   xs -> Cons (length xs + 1) 1 (Tip x) xs
 
 length :: Path -> Int
@@ -60,21 +64,6 @@ lca xs xs' = case compare n n' of
     n = length xs
     n' = length xs'
 
-dropUntilSame :: Path -> Path -> Path
-dropUntilSame xs@(Cons _ w t ys) (Cons _ _ t' ys')
-  | sameRoot t t' = xs
-  | sameHead ys ys' = go w t t' ys
-  | otherwise = dropUntilSame ys ys'
-  where
-    go n (Bin _ l r) (Bin _ l' r')
-      | sameRoot l l' = consTree n2 l . consTree n2 r
-      | sameRoot r r' = go n2 l l' . consTree n2 r
-      | otherwise = go n2 r r'
-      where
-        n2 = n `div` 2        
-    go _ _ _ = id
-dropUntilSame _ _ = Nil
-
 keep :: Int -> Path -> Path
 keep = fix $ \ rec i -> \ case
   Nil -> Nil
@@ -93,6 +82,25 @@ keep = fix $ \ rec i -> \ case
       where
         w2 = w `div` 2
     go _ _ _ = id
+
+(~=) :: Path -> Path -> Bool
+{-# INLINE (~=) #-}
+(~=) = sameHead
+
+dropUntilSame :: Path -> Path -> Path
+dropUntilSame xs@(Cons _ w t ys) (Cons _ _ t' ys')
+  | sameRoot t t' = xs
+  | sameHead ys ys' = go w t t' ys
+  | otherwise = dropUntilSame ys ys'
+  where
+    go n (Bin _ l r) (Bin _ l' r')
+      | sameRoot l l' = consTree n2 l . consTree n2 r
+      | sameRoot r r' = go n2 l l' . consTree n2 r
+      | otherwise = go n2 r r'
+      where
+        n2 = n `div` 2
+    go _ _ _ = id
+dropUntilSame _ _ = Nil
 
 consTree :: Int -> Tree -> Path -> Path
 {-# INLINE consTree #-}

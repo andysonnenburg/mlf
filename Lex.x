@@ -48,12 +48,12 @@ $white+ ;
 {
 lex :: Parser (Loc, Token)
 lex = do
-  s@S { pos, input } <- get
+  s@(ParserState pos xs) <- get
   case alexScan s 0 of
     AlexEOF -> return (Loc pos pos, EOF)
-    AlexError S { pos = pos' } -> lift $ Left (Loc pos pos', LexError)
+    AlexError (ParserState pos' _) -> lift $ Left (Loc pos pos', LexError)
     AlexSkip s' _ -> put s' >> lex
-    AlexToken s'@S { pos = pos' } n m -> put s' >> m (Loc pos pos') input n
+    AlexToken s'@(ParserState pos' _) n m -> put s' >> m (Loc pos pos') xs n
 
 type Action = Loc -> ByteString -> Int -> Parser (Loc, Token)
 
@@ -85,14 +85,14 @@ var loc xs n = do
 
 fromLazyByteString :: ByteString -> Parser Text
 fromLazyByteString =
-  either (\ e -> get >>= \ S {..} -> lift $ Left (Loc pos pos, UnicodeException e))
+  either (\ e -> get >>= \ (ParserState pos _) -> lift $ Left (Loc pos pos, UnicodeException e))
   return .
   Text.decodeUtf8'
 
-type AlexInput = S
+type AlexInput = ParserState
 
 alexGetByte :: AlexInput -> Maybe (Word8, AlexInput)
-alexGetByte S {..} =
-  (\ (x, xs) -> (x, S { pos = plusPos (w2c x) pos, input = xs})) <$>
-  ByteString.uncons input
+alexGetByte (ParserState pos xs) =
+  (\ (x, ys) -> (x, ParserState (plusPos (w2c x) pos) ys)) <$>
+  ByteString.uncons xs
 }

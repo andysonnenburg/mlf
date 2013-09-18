@@ -1,7 +1,7 @@
 module Parser
        ( Parser
        , runParser
-       , S (..)
+       , ParserState (..)
        , ParseError (..)
        ) where
 
@@ -13,12 +13,12 @@ import Data.Text.Encoding.Error
 import Loc
 import Token
 
-type Parser = StateT S (Either (Loc, ParseError))
+type Parser = StateT ParserState (Either (Loc, ParseError))
 
 runParser :: Parser a -> ByteString -> Either (Loc, ParseError) a
-runParser m xs = evalStateT m S { pos = Pos 1 1, input = xs }
+runParser m xs = evalStateT m (ParserState (Pos 1 1) xs)
 
-data S = S { pos :: {-# UNPACK #-} !Pos, input :: {-# UNPACK #-} !ByteString }
+data ParserState = ParserState {-# UNPACK #-} !Pos {-# UNPACK #-} !ByteString
 
 data ParseError
   = LexError

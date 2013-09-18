@@ -4,7 +4,7 @@ module UnionFind
        , new
        , union
        , find
-       , Elem
+       , Ref
        , read
        ) where
 
@@ -13,8 +13,8 @@ import Control.Monad
 import Control.Monad.ST.Safe
 
 import Data.Function (fix)
-import Data.Semigroup
 import Data.STRef
+import Data.Semigroup
 
 import Prelude hiding (elem, read)
 
@@ -22,78 +22,61 @@ import STIntRef
 
 newtype Set s a = Set { unSet :: STRef s (Link s a) }
 
-newtype Elem s a = Elem { unElem :: STRef s a } deriving Eq
+newtype Ref s a = Ref { unRef :: STRef s a } deriving Eq
 
 data Link s a
-  = ElemLink {-# UNPACK #-} !(STIntRef s) {-# UNPACK #-} !(Elem s a)
-  | SetLink {-# UNPACK #-} !(Set s a)
+  = RefLink {-# UNPACK #-} !(STIntRef s) {-# UNPACK #-} !(STRef s a)
+  | SetLink {-# UNPACK #-} !(STRef s (Link s a))
 
 new :: a -> ST s (Set s a)
 new a =
-  ElemLink <$> newSTIntRef minBound <*> (Elem <$> newSTRef a) >>=
+  RefLink <$> newSTIntRef minBound <*> newSTRef a >>=
   fmap Set . newSTRef
 
 union :: Semigroup a => Set s a -> Set s a -> ST s ()
 union x y = do
-  Triple xRank xElem x' <- find' x
-  Triple yRank yElem y' <- find' y
-  when (unSet x' /= unSet y') $
+  Three xRank xRef x' <- find' x
+  Three yRank yRef y' <- find' y
+  when (x' /= y') $
     compare <$> readSTIntRef xRank <*> readSTIntRef yRank >>= \ case
       LT -> do
-        writeSet x' $ SetLink y'
-        write yElem =<< (<>) <$> read xElem <*> read yElem
+        writeSTRef x' $ SetLink y'
+        writeSTRef yRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
       EQ -> do
-        incrementRank xRank
-        writeSet y' $ SetLink x'
-        write xElem =<< (<>) <$> read xElem <*> read yElem
+        modifySTIntRef xRank (+ 1)
+        writeSTRef y' $ SetLink x'
+        writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
       GT -> do
-        writeSet y' $ SetLink x'
-        write xElem =<< (<>) <$> read xElem <*> read yElem
+        writeSTRef y' $ SetLink x'
+        writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
 
-find :: Set s a -> ST s (Elem s a)
-find = fmap fst' . fix (\ rec set -> readSet set >>= \ case
-  ElemLink _ elem -> return $ elem :* set
+find :: Set s a -> ST s (Ref s a)
+find = fmap (\ (Two a _) -> Ref a) . fix (\ rec set -> readSTRef set >>= \ case
+  RefLink _ elem -> return $! Two elem set
   SetLink set' -> do
-    r@(_ :* set'') <- rec set'
-    writeSet set $ SetLink set''
-    return r)
+    two@(Two _ set'') <- rec set'
+    writeSTRef set $ SetLink set''
+    return two) . unSet
 
-find' :: Set s a -> ST s (Triple s a)
-find' = fix $ \ rec set -> readSet set >>= \ case
-  ElemLink rank elem -> return $ Triple rank elem set
+find' :: Set s a -> ST s (Three s a)
+find' = fix (\ rec set -> readSTRef set >>= \ case
+  RefLink rank elem -> return $! Three rank elem set
   SetLink set' -> do
-    r@(Triple _ _ set'') <- rec set'
-    writeSet set $ SetLink set''
-    return r
+    three@(Three _ _ set'') <- rec set'
+    writeSTRef set $ SetLink set''
+    return three) . unSet
 
-read :: Elem s a -> ST s a
+read :: Ref s a -> ST s a
 {-# INLINE read #-}
-read = readSTRef . unElem
+read = readSTRef . unRef
 
-data Pair s a = {-# UNPACK #-} !(Elem s a) :* !(Set s a)
+data Two s a =
+  Two
+  {-# UNPACK #-} !(STRef s a)
+  {-# UNPACK #-} !(STRef s (Link s a))
 
-fst' :: Pair s a -> Elem s a
-{-# INLINE fst' #-}
-fst' (a :* _) = a
-
-data Triple s a =
-  Triple
+data Three s a =
+  Three
   {-# UNPACK #-} !(STIntRef s)
-  {-# UNPACK #-} !(Elem s a)
-  {-# UNPACK #-} !(Set s a)
-
-readSet :: Set s a -> ST s (Link s a)
-{-# INLINE readSet #-}
-readSet = readSTRef . unSet
-
-writeSet :: Set s a -> Link s a -> ST s ()
-{-# INLINE writeSet #-}
-writeSet = writeSTRef . unSet
-
-write :: Elem s a -> a -> ST s ()
-{-# INLINE write #-}
-write = writeSTRef . unElem
-
-incrementRank :: STIntRef s -> ST s ()
-{-# INLINE incrementRank #-}
-incrementRank ref = readSTIntRef ref >>= writeSTIntRef ref . (+ 1)
+  {-# UNPACK #-} !(STRef s a)
+  {-# UNPACK #-} !(STRef s (Link s a))

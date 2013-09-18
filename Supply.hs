@@ -1,7 +1,9 @@
 {-# LANGUAGE
-    FlexibleInstances
-  , FunctionalDependencies 
-  , MultiParamTypeClasses #-}
+    DefaultSignatures
+  , FlexibleInstances
+  , FunctionalDependencies
+  , MultiParamTypeClasses
+  , UndecidableInstances #-}
 module Supply
        ( MonadSupply (..)
        , Supply
@@ -11,14 +13,19 @@ module Supply
        ) where
 
 import Control.Applicative
+import Control.Monad.Error
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 
 import Data.Functor.Identity
 
+import Hoist
 import Stream
 
 class (Applicative m, Monad m) => MonadSupply s m | m -> s where
   supply :: m s
+  default supply :: (MonadTrans t, MonadSupply s m) => t m s
+  supply = lift supply
 
 type Supply s = SupplyT s Identity
 
@@ -41,8 +48,20 @@ instance Monad m => Monad (SupplyT s m) where
   return = SupplyT . return
   m >>= k = SupplyT $ unSupplyT m >>= unSupplyT . k
 
+instance MonadTrans (SupplyT s) where
+  lift = SupplyT . lift
+
+instance MonadHoist (SupplyT s) where
+  hoist f = SupplyT . hoist f . unSupplyT
+
 instance (Applicative m, Monad m) => MonadSupply s (SupplyT s m) where
   supply = SupplyT $ do
     x :| xs <- get
     put xs
     return x
+
+instance MonadError e m => MonadError e (SupplyT s m) where
+  throwError = SupplyT . throwError
+  m `catchError` h = SupplyT $ unSupplyT m `catchError` (unSupplyT . h)
+
+instance MonadSupply s m => MonadSupply s (ReaderT r m)

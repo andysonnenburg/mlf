@@ -14,12 +14,15 @@ cabal-version:       >= 1.8
 executable mlf
   main-is: mlf.hs      
   other-modules:
+    Hoist,
     Lex,
     Loc,
+    Name,
     Parse,
     Parser,
     Path,
-    Scope,
+    Rename,
+    STIntRef,
     Stream,
     Supply,
     Token,
@@ -30,11 +33,14 @@ executable mlf
     Unify,
     UnionFind
   build-depends:
-    base ==4.6.*,
+    base == 4.6.*,
     array,
     bytestring,
-    comonad,
     cmdargs,
+    comonad,
+    containers,
+    hashable,
+    unordered-containers,
     mtl,
     semigroups,
     semigroupoids,

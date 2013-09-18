@@ -15,11 +15,11 @@ import Type.BindingFlag
 
 data MonoType a
   = Var a
-  | MonoType a :-> MonoType a
+  | Arr (MonoType a) (MonoType a)
   deriving (Show, Functor, Foldable, Traversable)
 
 data PolyType a
-  = MonoType (MonoType a)
-  | Bottom
+  = Mono (MonoType a)
+  | Bot
   | Forall a BindingFlag (PolyType a) (PolyType a)
   deriving (Show, Functor, Foldable, Traversable)

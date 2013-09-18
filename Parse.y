@@ -36,17 +36,18 @@ import Prelude hiding (lex)
   ')' { (extract -> Token.RightParen) }
   VAR { (extract -> Token.Var _) }
 
+%right '->'
+
 %%
 
 polyType
-  : monoType { MonoType $1 }
-  | '_|_' { Bottom }
+  : monoType { Mono $1 }
+  | '_|_' { Bot }
   | FORALL '(' var '<>' polyType ')' polyType { Forall $3 $4 $5 $7 }
-  | '(' polyType ')' { $2 }
 
 monoType
   : var { Var $1 }
-  | monoType '->' monoType { $1 :-> $3 }
+  | monoType '->' monoType { Arr $1 $3 }
   | '(' monoType ')' { $2 }
 
 var : VAR { case extract $1 of Token.Var x -> x }

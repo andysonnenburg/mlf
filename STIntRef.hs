@@ -4,6 +4,7 @@ module STIntRef
        , newSTIntRef
        , readSTIntRef
        , writeSTIntRef
+       , modifySTIntRef
        ) where
 
 import GHC.Exts (Int (I#),
@@ -37,3 +38,7 @@ writeSTIntRef :: STIntRef s -> Int -> ST s ()
 {-# INLINE writeSTIntRef #-}
 writeSTIntRef (STIntRef arr) (I# i) = ST $ \ s -> case writeIntArray# arr 0# i s of
   s' -> (# s', () #)
+
+modifySTIntRef :: STIntRef s -> (Int -> Int) -> ST s ()
+{-# INLINE modifySTIntRef #-}
+modifySTIntRef ref f = readSTIntRef ref >>= writeSTIntRef ref . f

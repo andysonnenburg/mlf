@@ -1,31 +1,45 @@
+{-# LANGUAGE LambdaCase #-}
 module Type.Graphic
        ( Type
+       , Node (..)
        , Term (..)
-       , UnlabelledTerm (..)
        , Binders
        , BindingFlags
        , BindingFlag (..)
+       , fromRestricted
+       , toSyntactic
        ) where
+
+import Control.Monad.ST.Safe
 
 import Data.IntMap.Strict (IntMap)
 import Data.Semigroup
 
+import Name
 import Path
 import Type.BindingFlag
+import qualified Type.Restricted as R
+import qualified Type.Syntactic as S
 import UnionFind
 
-type Type s = (Term s, Binders, BindingFlags)
+type Type s a = (Node s a, Binders, BindingFlags)
 
-data Term s = Term {-# UNPACK #-} !Int (Set s (UnlabelledTerm s))
+data Node s a = Node (Name a) (Set s (Term s a))
 
-data UnlabelledTerm s
+data Term s a
   = Bot
-  | Arr (Term s) (Term s)
+  | Arr (Node s a) (Node s a)
 
-instance Semigroup (UnlabelledTerm s) where
+instance Semigroup (Term s a) where
   Bot <> a = a
   a <> _ = a
 
 type Binders = IntMap Path
 
 type BindingFlags = IntMap BindingFlag
+
+fromRestricted :: R.Type a -> ST s (Type s a)
+fromRestricted = undefined
+
+toSyntactic :: Type s a -> ST s (S.PolyType a)
+toSyntactic = undefined
