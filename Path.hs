@@ -71,7 +71,7 @@ keep = fix $ \ rec i -> \ case
     | i >= n -> xs
     | otherwise -> case compare i (n - w) of
       LT -> rec i ys
-      EQ -> xs
+      EQ -> ys
       GT -> go (i - n + w) w t ys
   where
     go n w (Bin _ l r) = case compare n w2 of
