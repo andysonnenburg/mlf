@@ -71,20 +71,18 @@ fromRestricted =
     R.Arr a b -> do
       p <- ask
       Node <$> supplyName <*> liftST (newSet (Arr (p!toInt a) (p!toInt b)))
-    R.Forall (Name a i) bf o o' -> do
+    R.Forall a bf o o' -> do
       t <- rec o
-      n_a <- newNode a Bot
-      t' <- local (Map.insert i n_a) $ rec o'
-      sameSet t' n_a >>= \ case
+      t' <- local (Map.insert (toInt a) t) $ rec o'
+      sameSet t t' >>= \ case
         True -> return t
         False -> do
-          liftST $ union (nodeSet t) (nodeSet n_a)
           tellBinding (toInt t) bf (toInt t')
           return t')
   where
     tellBinding r_t bf r_t' = do
       (t_b, t_bf) <- get
-      put (Map.insert r_t (Path.cons r_t' (findBinder r_t' t_b)) t_b,
+      put (Map.insert r_t (Path.cons r_t' $ findBinder r_t' t_b) t_b,
            Map.insert r_t bf t_bf)
     newNode x t = Node <$> (Name x <$> supply) <*> liftST (newSet t)
     newSet = liftST . new
