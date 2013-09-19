@@ -3,6 +3,7 @@
   , FlexibleInstances
   , FunctionalDependencies
   , MultiParamTypeClasses
+  , TypeFamilies
   , UndecidableInstances #-}
 module Supply
        ( MonadSupply (..)
@@ -20,6 +21,7 @@ import Control.Monad.State.Strict
 import Data.Functor.Identity
 
 import Hoist
+import ST
 import Stream
 
 class (Applicative m, Monad m) => MonadSupply s m | m -> s where
@@ -64,4 +66,16 @@ instance MonadError e m => MonadError e (SupplyT s m) where
   throwError = SupplyT . throwError
   m `catchError` h = SupplyT $ unSupplyT m `catchError` (unSupplyT . h)
 
+instance MonadReader r m => MonadReader r (SupplyT s m) where
+  ask = SupplyT ask
+  local f = SupplyT . local f . unSupplyT
+
+instance MonadST m => MonadST (SupplyT s m) where
+  type World (SupplyT s m) = World m
+
+instance MonadState s m => MonadState s (SupplyT s' m) where
+  get = lift get
+  put = lift . put  
+
 instance MonadSupply s m => MonadSupply s (ReaderT r m)
+instance MonadSupply s m => MonadSupply s (StateT s' m)

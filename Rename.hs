@@ -17,6 +17,7 @@ data RenameError a = NotFound a deriving Show
 
 rename :: ( Eq a
           , Hashable a
+          , Applicative m
           , MonadError (RenameError a) m
           , MonadSupply Int m
           ) => PolyType a -> m (PolyType (Name a))

@@ -3,14 +3,16 @@
   , FlexibleInstances
   , LambdaCase
   , MultiParamTypeClasses
-  , RecordWildCards #-}
+  , RecordWildCards
+  , TypeFamilies
+  , UndecidableInstances #-}
 module Main (main) where
 
 import Control.Applicative
-import Control.Category ((<<<))
 import Control.Monad
-import Control.Monad.Error hiding (Error (..))
+import Control.Monad.Error.Class hiding (Error (..))
 import Control.Monad.ST.Safe
+import Control.Monad.Trans.Class
 
 import Data.ByteString.UTF8 as ByteString
 import Data.Text
@@ -18,16 +20,18 @@ import Data.Text
 import System.Console.CmdArgs
 import System.Environment (getProgName)
 
-import Hoist
 import Loc
 import Parse
 import Parser
 import Rename
+import ST
 import qualified Stream
 import Supply
 import qualified Type.Graphic as Graphic
 import qualified Type.Restricted as Restricted
 import Unify
+
+import Debug.Trace
 
 data MLF
   = Echo { input :: String }
@@ -41,49 +45,54 @@ mlf progName =
 
 main :: IO ()
 main = mlf <$> getProgName >>= cmdArgs >>= \ case
-  Echo {..} ->
-    print <<<
-    fmap (\ t -> runST (Graphic.toSyntactic =<< Graphic.fromRestricted t)) <<<
-    flip runSupplyT (Stream.enumFrom 0) <<<
-    Restricted.fromSyntactic <=<
-    throwsRenameError . rename <=<
-    throwsParseError . runParser parse $
-    ByteString.fromString input
+  Echo {..} -> print $ do
+    t <- throwsParseError . runParser parse $ ByteString.fromString input
+    runST $ flip runSupplyT (Stream.enumFrom 0) $ runErrorT $ do
+      t_r <- Restricted.fromSyntactic =<< throws RenameError (rename t)
+      t_g <- Graphic.fromRestricted t_r
+      trace (show (t, t_r)) $ liftST $ Graphic.toSyntactic t_g
 
 data Error
   = ParseError !Loc !ParseError
   | RenameError !(RenameError Text) deriving Show
 
-newtype Compiler s a = Compiler { unCompiler :: Either Error a } deriving Show
+newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
 
-instance Functor (Compiler s) where
-  fmap f = Compiler . fmap f . unCompiler
+throws :: Functor m => (e -> e') -> ErrorT e m a -> ErrorT e' m a
+throws f = ErrorT . fmap (mapLeft f) . runErrorT
 
-instance Applicative (Compiler s) where
-  pure = Compiler . pure
-  f <*> a = Compiler $ unCompiler f <*> unCompiler a
+instance Functor m => Functor (ErrorT e m) where
+  fmap f = ErrorT . fmap (fmap f) . runErrorT
 
-instance Monad (Compiler s) where
-  return = Compiler . return
-  m >>= f = Compiler $ unCompiler m >>= unCompiler . f
+instance (Applicative m, Monad m) => Applicative (ErrorT e m) where
+  pure = ErrorT . pure . Right
+  f <*> a = ErrorT $ runErrorT f >>= \ case
+    Left e -> pure (Left e)
+    Right f' -> runErrorT a >>= \ case
+      Left e -> pure (Left e)
+      Right a' -> pure (Right (f' a'))
 
-instance MonadError (Loc, ParseError) (Compiler (Loc, ParseError)) where
-  throwError = Compiler . Left . uncurry ParseError
-  m `catchError` h = case unCompiler m of
-    Left (ParseError l e) -> h (l, e)
-    _ -> m
+instance Monad m => Monad (ErrorT e m) where
+  return = ErrorT . return . Right
+  m >>= f = ErrorT $ runErrorT m >>= \ case
+    Left e -> return (Left e)
+    Right a -> runErrorT (f a)
 
-instance MonadError (RenameError Text) (Compiler (RenameError Text)) where
-  throwError = Compiler . Left . RenameError
-  m `catchError` h = case unCompiler m of
-    Left (RenameError e) -> h e
-    _ -> m
+instance MonadTrans (ErrorT e) where
+  lift = ErrorT . liftM Right
 
-throwsRenameError :: MonadHoist t => t (Compiler (RenameError Text)) a -> t (Compiler s) a
-throwsRenameError = hoist (Compiler . unCompiler)
+instance Monad m => MonadError e (ErrorT e m) where
+  throwError = ErrorT . return . Left
+  m `catchError` h = ErrorT $ runErrorT m >>= \ case
+    Left e -> runErrorT (h e)
+    Right a -> return (Right a)
 
-throwsParseError :: MonadTrans t => Either (Loc, ParseError) a -> t (Compiler s) a
-throwsParseError = lift . Compiler . mapLeft (uncurry ParseError)
+instance MonadST m => MonadST (ErrorT e m) where
+  type World (ErrorT e m) = World m
+instance MonadSupply s m => MonadSupply s (ErrorT e m)
+
+throwsParseError :: Either (Loc, ParseError) a -> Either Error a
+throwsParseError = mapLeft (uncurry ParseError)
 
 mapLeft :: (e -> e') -> Either e a -> Either e' a
 mapLeft f = \ case

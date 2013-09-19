@@ -3,6 +3,7 @@ module Path
        ( Path
        , empty
        , cons
+       , uncons
        , length
        , toList
        , lca
@@ -41,6 +42,15 @@ cons :: Int -> Path -> Path
 cons x = \ case
   Cons n w t (Cons _ w' t' xs) | w == w' -> Cons (n + 1) (2 * w + 1) (Bin x t t') xs
   xs -> Cons (length xs + 1) 1 (Tip x) xs
+
+uncons :: Path -> Maybe (Int, Path)
+uncons = \ case
+  Nil -> Nothing
+  Cons _ _ (Tip x) xs -> Just (x, xs)
+  Cons _ w (Bin x l r) xs -> Just (x, consTree w2 l (consTree w2 r xs))
+    where
+      w2 = w `div` 2
+    
 
 length :: Path -> Int
 {-# INLINE length #-}

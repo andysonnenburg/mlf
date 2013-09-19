@@ -15,6 +15,7 @@ executable mlf
   main-is: mlf.hs      
   other-modules:
     Hoist,
+    Int,
     Lex,
     Loc,
     Name,
@@ -22,6 +23,7 @@ executable mlf
     Parser,
     Path,
     Rename,
+    ST,
     STIntRef,
     Stream,
     Supply,
