@@ -12,6 +12,10 @@ import Data.Text
 
 import System.Console.CmdArgs
 import System.Environment (getProgName)
+import System.Exit (exitFailure)
+import System.IO (hPrint, stderr)
+
+import Text.PrettyPrint.Free (pretty, putDoc)
 
 import Error
 import Loc
@@ -25,8 +29,6 @@ import qualified Type.Graphic as Graphic
 import qualified Type.Restricted as Restricted
 import Unify
 
-import Debug.Trace
-
 data MLF
   = Echo { input :: String }
   | Unify { input :: String } deriving (Typeable, Data)
@@ -39,12 +41,18 @@ mlf progName =
 
 main :: IO ()
 main = mlf <$> getProgName >>= cmdArgs >>= \ case
-  Echo {..} -> print $ do
+  Echo {..} -> case do
     t <- throwsParseError . runParser parse $ ByteString.fromString input
     runST $ flip runSupplyT (Stream.enumFrom 0) $ runErrorT $ do
       t_r <- Restricted.fromSyntactic =<< throws RenameError (rename t)
       t_g <- Graphic.fromRestricted t_r
-      trace (show (t, t_r)) $ liftST $ Graphic.toSyntactic t_g
+      liftST $ Graphic.toSyntactic t_g of
+                 Left e -> do
+                   hPrint stderr e
+                   exitFailure
+                 Right a -> do
+                   putDoc $ pretty a
+                   putStrLn ""
 
 data Error
   = ParseError !Loc !ParseError

@@ -49,6 +49,7 @@ executable mlf
     semigroupoids,
     text,
     transformers,
-    utf8-string
+    utf8-string,
+    wl-pprint-extras
   ghc-options: -Wall -O2
   build-tools: alex, happy

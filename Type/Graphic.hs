@@ -72,7 +72,7 @@ fromRestricted =
       p <- ask
       Node <$> supplyName <*> liftST (newSet (Arr (p!toInt a) (p!toInt b)))
     R.Forall a bf o o' -> do
-      t <- rec o
+      t <- flip appendName a <$> rec o
       t' <- local (Map.insert (toInt a) t) $ rec o'
       sameSet t t' >>= \ case
         True -> return t
@@ -92,6 +92,9 @@ fromRestricted =
       fmap (\ (a, (b, c)) -> (a, b, c)) .
       flip runStateT mempty .
       flip runReaderT mempty
+
+appendName :: Node s a -> Name a -> Node s a
+appendName (Node x a) y = Node (x <> y) a
 
 prune :: Type s a -> ST s (Type s a)
 prune (t, t_b, t_bf) = do
