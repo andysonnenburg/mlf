@@ -40,16 +40,18 @@ import qualified Type.Restricted as R
 import qualified Type.Syntactic as S
 import UnionFind
 
-type Type s a = (Node s a, Binders, BindingFlags)
+type Type s a = (NodeSet s a, Binders, BindingFlags)
 
-data Node s a = Node (Name a) (Set s (Term s a))
+type NodeSet s a = Set s (Node s a)
+
+data Node s a = Node (Name a) (Term s a)
 
 instance IsInt (Node s a) where
   toInt (Node x _) = toInt x
 
 data Term s a
   = Bot
-  | Arr (Node s a) (Node s a)
+  | Arr (NodeSet s a) (NodeSet s a)
 
 instance Semigroup (Term s a) where
   Bot <> a = a
@@ -65,36 +67,34 @@ fromRestricted :: ( MonadSupply Int m
 fromRestricted =
   liftST . prune <=<
   run <<<
-  fix (\ rec -> \ case
-    R.Bot -> newNode Nothing Bot
+  fix (\ rec h -> \ case
+    R.Bot -> newSet h Bot
     R.Var (toInt -> x) -> (!x) <$> ask
     R.Arr a b -> do
       p <- ask
-      Node <$> supplyName <*> liftST (newSet (Arr (p!toInt a) (p!toInt b)))
-    R.Forall a bf o o' -> do
-      t <- flip appendName a <$> rec o
-      t' <- local (Map.insert (toInt a) t) $ rec o'
+      newSet h $ Arr (p!toInt a) (p!toInt b)
+    R.Forall (Name h' x) bf o o' -> do
+      t <- rec h' o
+      t' <- local (Map.insert x t) $ rec h o'
       sameSet t t' >>= \ case
         True -> return t
         False -> do
-          tellBinding (toInt t) bf (toInt t')
-          return t')
+          tellBinding t bf t'
+          return t') Nothing
   where
-    tellBinding r_t bf r_t' = do
+    tellBinding t bf t' = do
+      r_t <- liftST $ fmap toInt . read =<< find t
+      r_t' <- liftST $ fmap toInt . read =<< find t'
       (t_b, t_bf) <- get
       put (Map.insert r_t (Path.cons r_t' $ findBinder r_t' t_b) t_b,
            Map.insert r_t bf t_bf)
-    newNode x t = Node <$> (Name x <$> supply) <*> liftST (newSet t)
-    newSet = liftST . new
-    sameSet = liftA2 (==) `on` liftST . find . nodeSet
-    nodeSet (Node _ x) = x
+    newSet x t = liftST . new =<< newNode x t
+    newNode x t = Node <$> (Name x <$> supply) <*> pure t
+    sameSet = liftA2 (==) `on` liftST . find
     run =
       fmap (\ (a, (b, c)) -> (a, b, c)) .
       flip runStateT mempty .
       flip runReaderT mempty
-
-appendName :: Node s a -> Name a -> Node s a
-appendName (Node x a) y = Node (x <> y) a
 
 prune :: Type s a -> ST s (Type s a)
 prune (t, t_b, t_bf) = do
@@ -109,29 +109,30 @@ toSyntactic (t_n, t_b, t_bf) = do
       Just (y, _) -> modify $ Map.alter (\ case
         Nothing -> Just [n]
         Just ns -> Just (n:ns)) y
-  fix (\ rec (Node (toInt -> x) y) -> do
-    t0 <- fmap
-          (\ case
-              Bot -> S.Bot
-              Arr (Node a _) (Node b _) -> S.Mono $ S.Arr (S.Var a) (S.Var b)) .
-          read =<<
-          find y
+  fix (\ rec (Node (toInt -> x) c) -> do
+    t0 <- case c of
+      Bot -> return S.Bot
+      Arr a b -> do
+        Node a' _ <- read =<< find a
+        Node b' _ <- read =<< find b
+        return $ S.Mono $ S.Arr (S.Var a') (S.Var b')
     foldM (\ t n@(Node a _) -> do
       t' <- rec n
       return $ S.Forall a (t_bf!toInt a) t' t)
       t0
-      (fromMaybe [] $ Map.lookup x bound)) t_n
+      (fromMaybe [] $ Map.lookup x bound)) =<< read =<< find t_n
 
-forNode_ :: MonadST m => Node (World m) a -> (Node (World m) a -> m b) -> m ()
-forNode_ n0 f = flip evalStateT mempty $ fix (\ rec n@(Node (toInt -> x) y) ->
+forNode_ :: MonadST m => NodeSet (World m) a -> (Node (World m) a -> m b) -> m ()
+forNode_ t_n0 f = flip evalStateT mempty $ fix (\ rec t_n ->
+  liftST (find t_n >>= read) >>= \ n@(Node (toInt -> x) c) ->
   gets (Set.member x) >>= \ case
     True -> return ()
     False -> do
       modify (Set.insert x)
-      liftST (find y >>= read) >>= \ case
+      case c of
         Bot -> return ()
         Arr a b -> rec a >> rec b
-      void $ lift $ f n) n0
+      void $ lift $ f n) t_n0
 
 findBinder :: Int -> Binders -> Path
 findBinder x xs = case Map.lookup x xs of

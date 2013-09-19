@@ -27,7 +27,6 @@ import qualified Stream
 import Supply
 import qualified Type.Graphic as Graphic
 import qualified Type.Restricted as Restricted
-import Unify
 
 data MLF
   = Echo { input :: String }
