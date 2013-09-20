@@ -39,11 +39,11 @@ instance Semigroup Up where
   _ <> Inert = Inert
   Monomorphic <> Monomorphic = Monomorphic
 
-toPermission :: Up -> Down -> Permission
-toPermission = curry $ \ case
-  (Monomorphic, _) -> M
-  (Inert, _) -> I
-  (Neither, x) -> fromDown x
+fromUp :: Permission -> Up -> Permission
+fromUp x = \ case
+  Monomorphic -> M
+  Inert -> I
+  Neither -> x
 
 getPermissions :: Type s a -> ST s Permissions
 getPermissions (t_n, t_p, t_bf) = do
@@ -69,7 +69,7 @@ getPermissions (t_n, t_p, t_bf) = do
         (Rigid, _) -> Orange
         (Flexible, Orange) -> Red
         (Flexible, Red) -> Red
-  return $ Map.intersectionWith toPermission ups downs
+  return $ Map.intersectionWith (flip $ fromUp . fromDown) ups downs
 
 poly :: Term s a -> Bool
 poly = \ case
