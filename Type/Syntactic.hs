@@ -3,18 +3,15 @@
   , DeriveFunctor
   , DeriveTraversable
   , FlexibleInstances
-  , LambdaCase
-  , OverloadedStrings #-}
+  , LambdaCase #-}
 module Type.Syntactic
        ( MonoType (..)
        , PolyType (..)
        , BindingFlag (..)
        ) where
 
-import Control.Monad.Reader
-
 import Data.Foldable
-import Data.Text (Text)
+import Data.Function (fix)
 import Data.Traversable
 
 import Text.PrettyPrint.Free
@@ -33,17 +30,15 @@ data PolyType a
   | Forall a BindingFlag (PolyType a) (PolyType a)
   deriving (Show, Functor, Foldable, Traversable)
 
-instance Pretty (PolyType (Name Text)) where
+instance Pretty a => Pretty (PolyType (Name a)) where
   pretty = prettyPoly
     where
       prettyPoly = fix $ \ rec -> \ case
         Mono t -> prettyMono t
         Bot -> text "_|_"
         Forall x bf a b ->
-          text "forall" <+> lparen <>
-          prettyName x <+>
-          prettyBindingFlag bf <+>
-          rec a <> rparen <+>
+          text "forall" <+>
+          lparen <> prettyName x <+> pretty bf <+> rec a <> rparen <+>
           rec b
       prettyMono = fix $ \ rec -> \ case
         Var x -> prettyName x
@@ -51,6 +46,3 @@ instance Pretty (PolyType (Name Text)) where
       prettyName = \ case
         Name Nothing x -> text "a" <> char '$' <> pretty x
         Name (Just a) x -> pretty a <> char '$' <> pretty x
-      prettyBindingFlag = \ case
-        Flexible -> char '>'
-        Rigid -> char '='

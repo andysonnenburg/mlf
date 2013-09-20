@@ -4,6 +4,7 @@
   , ViewPatterns #-}
 module Type.Graphic
        ( Type
+       , NodeSet
        , Node (..)
        , Term (..)
        , Binders
@@ -61,8 +62,8 @@ type Binders = IntMap Path
 
 type BindingFlags = IntMap BindingFlag
 
-fromRestricted :: ( MonadSupply Int m
-                  , MonadST m
+fromRestricted :: ( MonadST m
+                  , MonadSupply Int m
                   ) => R.Type (Name a) -> m (Type (World m) a)
 fromRestricted =
   liftST . prune <=<
@@ -86,8 +87,8 @@ fromRestricted =
       r_t <- liftST $ fmap toInt . read =<< find t
       r_t' <- liftST $ fmap toInt . read =<< find t'
       (t_b, t_bf) <- get
-      put (Map.insert r_t (Path.cons r_t' $ findBinder r_t' t_b) t_b,
-           Map.insert r_t bf t_bf)
+      let b = Path.cons r_t' $ findBinder r_t' t_b
+      put (Map.insert r_t b t_b, Map.insert r_t bf t_bf)
     newSet x t = liftST . new =<< newNode x t
     newNode x t = Node <$> (Name x <$> supply) <*> pure t
     sameSet = liftA2 (==) `on` liftST . find
@@ -112,10 +113,10 @@ toSyntactic (t_n, t_b, t_bf) = do
   fix (\ rec (Node (toInt -> x) c) -> do
     t0 <- case c of
       Bot -> return S.Bot
-      Arr a b -> do
-        Node a' _ <- read =<< find a
-        Node b' _ <- read =<< find b
-        return $ S.Mono $ S.Arr (S.Var a') (S.Var b')
+      Arr t t' -> do
+        Node a _ <- read =<< find t
+        Node a' _ <- read =<< find t'
+        return $ S.Mono $ S.Arr (S.Var a) (S.Var a')
     foldM (\ t n@(Node a _) -> do
       t' <- rec n
       return $ S.Forall a (t_bf!toInt a) t' t)
@@ -123,16 +124,15 @@ toSyntactic (t_n, t_b, t_bf) = do
       (fromMaybe [] $ Map.lookup x bound)) =<< read =<< find t_n
 
 forNode_ :: MonadST m => NodeSet (World m) a -> (Node (World m) a -> m b) -> m ()
-forNode_ t_n0 f = flip evalStateT mempty $ fix (\ rec t_n ->
-  liftST (find t_n >>= read) >>= \ n@(Node (toInt -> x) c) ->
-  gets (Set.member x) >>= \ case
-    True -> return ()
-    False -> do
-      modify (Set.insert x)
-      case c of
-        Bot -> return ()
-        Arr a b -> rec a >> rec b
-      void $ lift $ f n) t_n0
+forNode_ t_n0 f = flip evalStateT mempty $ fix (\ rec t_n -> do
+  n@(Node (toInt -> x) c) <- liftST $ read =<< find t_n
+  xs <- get
+  when (Set.notMember x xs) $ do
+    modify (Set.insert x)
+    case c of
+      Bot -> return ()
+      Arr a b -> rec a >> rec b
+    void $ lift $ f n) t_n0
 
 findBinder :: Int -> Binders -> Path
 findBinder x xs = case Map.lookup x xs of

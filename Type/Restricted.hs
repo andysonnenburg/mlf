@@ -39,9 +39,9 @@ fromSyntactic = fromPoly
         return $ Forall x bf a' b'
     fromMono = fix $ \ rec -> \ case
       S.Var x -> return $ Var x
-      S.Arr a b -> do
-        a' <- rec a
-        a'' <- supplyName
-        b' <- rec b
-        b'' <- supplyName
-        return $ Forall a'' Flexible a' $ Forall b'' Flexible b' $ Arr a'' b''
+      S.Arr t u -> do
+        t' <- rec t
+        a <- supplyName
+        u' <- rec u
+        b <- supplyName
+        return $ Forall a Flexible t' $ Forall b Flexible u' $ Arr a b
