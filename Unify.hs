@@ -1,7 +1,8 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts, LambdaCase #-}
 module Unify (unify) where
 
 import Control.Applicative
+import Control.Monad.Error
 import Control.Monad.ST.Safe
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
@@ -14,10 +15,17 @@ import Prelude hiding (read)
 
 import Name
 import Path ((~=))
+import ST
 import Type.Graphic
 import UnionFind
 
-unify :: Type s a -> [Node s a] -> MaybeT (ST s) (Type s a)
+data UnifyError s a
+  = Name a `OccursIn` Term s a
+  | Term s a `DoesNotMatch` Term s a
+
+unify :: ( MonadError (UnifyError (World m) a) m
+         , MonadST m
+         ) => Type (World m) a -> [NodeSet (World m) a] -> m (Type (World m) a)
 unify (t, t_b, t_bf) n = do
   p <- getPermissions t t_b t_bf
   S bots merged <- execStateT (traversePairs_ unify' n) initS

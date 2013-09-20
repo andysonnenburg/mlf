@@ -8,7 +8,6 @@ import Control.Applicative
 import Control.Monad.ST.Safe
 
 import Data.ByteString.UTF8 as ByteString
-import Data.Text
 
 import System.Console.CmdArgs
 import System.Environment (getProgName)
@@ -21,6 +20,7 @@ import Error
 import Loc
 import Parse
 import Parser
+import Permission
 import Rename
 import ST
 import qualified Stream
@@ -30,11 +30,13 @@ import qualified Type.Restricted as Restricted
 
 data MLF
   = Echo { input :: String }
+  | Permission { input :: String }
   | Unify { input :: String } deriving (Typeable, Data)
 
 mlf :: String -> MLF
 mlf progName =
   modes [ Echo (def &= argPos 0 &= typ "STRING")
+        , Permission (def &= argPos 0 &= typ "STRING")
         , Unify (def &= argPos 0 &= typ "STRING")
         ] &= program progName
 
@@ -53,11 +55,11 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
                    putDoc $ pretty a
                    putStrLn ""
 
-data Error
+data Error a
   = ParseError !Loc !ParseError
-  | RenameError !(RenameError Text) deriving Show
+  | RenameError !(RenameError a) deriving Show
 
-throwsParseError :: Either (Loc, ParseError) a -> Either Error a
+throwsParseError :: Either (Loc, ParseError) a -> Either (Error e) a
 throwsParseError = mapLeft (uncurry ParseError)
 
 throws :: Functor m => (e -> e') -> ErrorT e m a -> ErrorT e' m a

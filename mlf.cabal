@@ -14,6 +14,7 @@ cabal-version:       >= 1.8
 executable mlf
   main-is: mlf.hs      
   other-modules:
+    Applicative,
     Error,
     Hoist,
     Int,
@@ -23,6 +24,7 @@ executable mlf
     Parse,
     Parser,
     Path,
+    Permission,
     Rename,
     ST,
     STIntRef,
@@ -41,6 +43,7 @@ executable mlf
     bytestring,
     cmdargs,
     comonad,
+    comonads-fd,
     containers,
     hashable,
     unordered-containers,

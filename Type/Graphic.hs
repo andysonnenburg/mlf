@@ -14,6 +14,7 @@ module Type.Graphic
        , toSyntactic
        , getBoundNodes
        , forNode_
+       , forNode_'
        , findPath
        ) where
 
@@ -140,6 +141,17 @@ forNode_ t_n0 f = flip evalStateT mempty $ fix (\ rec t_n -> do
       Bot -> return ()
       Arr a b -> rec a >> rec b
     void $ lift $ f n) t_n0
+
+forNode_' :: MonadST m => NodeSet (World m) a -> (Node (World m) a -> m b) -> m ()
+forNode_' t_n0 f = flip evalStateT mempty $ fix (\ rec t_n -> do
+  n@(Node (toInt -> x) c) <- liftST $ read =<< find t_n
+  xs <- get
+  when (Set.notMember x xs) $ do
+    modify $ Set.insert x
+    _ <- lift $ f n
+    case c of
+      Bot -> return ()
+      Arr a b -> rec a >> rec b) t_n0
 
 findPath :: Int -> Paths -> Path
 findPath x ps = case Map.lookup x ps of

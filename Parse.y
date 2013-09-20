@@ -2,10 +2,12 @@
 {-# LANGUAGE ViewPatterns #-}
 module Parse (parse) where
 
+import Control.Applicative
+import Control.Category ((<<<))
 import Control.Comonad
+import Control.Comonad.Env
 import Control.Monad.Trans.Class
 
-import Data.Functor.Apply
 import Data.Text (Text)
 
 import Lex
@@ -63,7 +65,7 @@ parse :: Parser (PolyType Text)
 parse = polyType
 
 parseError :: (Loc, Token) -> Parser a
-parseError (loc, tok) = lift $ Left (loc, UnexpectedToken tok)
+parseError = lift <<< Left <<< (,) <$> ask <*> UnexpectedToken . extract
 
 lexer :: ((Loc, Token) -> Parser a) -> Parser a
 lexer = (lex >>=)

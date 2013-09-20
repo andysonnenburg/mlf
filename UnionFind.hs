@@ -25,12 +25,12 @@ newtype Set s a = Set { unSet :: STRef s (Link s a) }
 newtype Ref s a = Ref { unRef :: STRef s a } deriving Eq
 
 data Link s a
-  = RefLink {-# UNPACK #-} !(STIntRef s) {-# UNPACK #-} !(STRef s a)
-  | SetLink {-# UNPACK #-} !(STRef s (Link s a))
+  = Repr {-# UNPACK #-} !(STIntRef s) {-# UNPACK #-} !(STRef s a)
+  | Link {-# UNPACK #-} !(STRef s (Link s a))
 
 new :: a -> ST s (Set s a)
 new a =
-  RefLink <$> newSTIntRef minBound <*> newSTRef a >>=
+  Repr <$> newSTIntRef minBound <*> newSTRef a >>=
   fmap Set . newSTRef
 
 union :: Semigroup a => Set s a -> Set s a -> ST s ()
@@ -40,30 +40,30 @@ union x y = do
   when (x' /= y') $
     compare <$> readSTIntRef xRank <*> readSTIntRef yRank >>= \ case
       LT -> do
-        writeSTRef x' $ SetLink y'
+        writeSTRef x' $ Link y'
         writeSTRef yRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
       EQ -> do
         modifySTIntRef xRank (+ 1)
-        writeSTRef y' $ SetLink x'
+        writeSTRef y' $ Link x'
         writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
       GT -> do
-        writeSTRef y' $ SetLink x'
+        writeSTRef y' $ Link x'
         writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
 
 find :: Set s a -> ST s (Ref s a)
 find = fmap (\ (Two a _) -> Ref a) . fix (\ rec set -> readSTRef set >>= \ case
-  RefLink _ elem -> return $! Two elem set
-  SetLink set' -> do
+  Repr _ elem -> return $! Two elem set
+  Link set' -> do
     two@(Two _ set'') <- rec set'
-    writeSTRef set $ SetLink set''
+    writeSTRef set $ Link set''
     return two) . unSet
 
 find' :: Set s a -> ST s (Three s a)
 find' = fix (\ rec set -> readSTRef set >>= \ case
-  RefLink rank elem -> return $! Three rank elem set
-  SetLink set' -> do
+  Repr rank elem -> return $! Three rank elem set
+  Link set' -> do
     three@(Three _ _ set'') <- rec set'
-    writeSTRef set $ SetLink set''
+    writeSTRef set $ Link set''
     return three) . unSet
 
 read :: Ref s a -> ST s a
