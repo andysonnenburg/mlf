@@ -1,7 +1,7 @@
 {-# LANGUAGE
     DeriveDataTypeable
   , LambdaCase
-  , RecordWildCards#-}
+  , RecordWildCards #-}
 module Main (main) where
 
 import Control.Applicative

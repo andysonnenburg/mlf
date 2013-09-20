@@ -75,7 +75,7 @@ instance MonadST m => MonadST (SupplyT s m) where
 
 instance MonadState s m => MonadState s (SupplyT s' m) where
   get = lift get
-  put = lift . put  
+  put = lift . put
 
 instance MonadSupply s m => MonadSupply s (ReaderT r m)
 instance MonadSupply s m => MonadSupply s (StateT s' m)

@@ -50,7 +50,6 @@ uncons = \ case
   Cons _ w (Bin x l r) xs -> Just (x, consTree w2 l (consTree w2 r xs))
     where
       w2 = w `div` 2
-    
 
 length :: Path -> Int
 {-# INLINE length #-}
