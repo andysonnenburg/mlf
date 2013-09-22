@@ -15,7 +15,8 @@ executable mlf
   main-is: mlf.hs      
   other-modules:
     Applicative,
-    Error,
+    Catch,
+    Function,
     Hoist,
     Int,
     Lex,
@@ -24,15 +25,17 @@ executable mlf
     Parse,
     Parser,
     Path,
-    Permission,
+    Product,
     Rename,
     ST,
     STIntRef,
     Stream,
+    Sum,
     Supply,
     Token,
     Type.BindingFlag,
     Type.Graphic,
+    Type.Permission,
     Type.Syntactic,
     Type.Restricted,
     Unify,
@@ -53,6 +56,8 @@ executable mlf
     text,
     transformers,
     utf8-string,
-    wl-pprint-extras
+    wl-pprint-extras,
+    terminfo,
+    wl-pprint-terminfo
   ghc-options: -Wall -O2
   build-tools: alex, happy

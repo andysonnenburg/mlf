@@ -10,6 +10,9 @@ module Type.Restricted
        , fromSyntactic
        ) where
 
+import Control.Category ((>>>))
+import Control.Comonad
+
 import Data.Foldable
 import Data.Function (fix)
 import Data.Traversable
@@ -27,17 +30,19 @@ data Type a
   | Forall a BindingFlag (Type a) (Type a)
   deriving (Show, Functor, Foldable, Traversable)
 
-fromSyntactic :: MonadSupply Int m => PolyType (Name a) -> m (Type (Name a))
+fromSyntactic :: ( Comonad w
+                 , MonadSupply Int m
+                 ) => w (PolyType w (Name a)) -> m (Type (Name a))
 fromSyntactic = fromPoly
   where
-    fromPoly = fix $ \ rec -> \ case
+    fromPoly = fix $ \ rec -> extract >>> \ case
       S.Mono t -> fromMono t
       S.Bot -> return Bot
       S.Forall x bf a b -> do
         a' <- rec a
         b' <- rec b
         return $ Forall x bf a' b'
-    fromMono = fix $ \ rec -> \ case
+    fromMono = fix $ \ rec -> extract >>> \ case
       S.Var x -> return $ Var x
       S.Arr t u -> do
         t' <- rec t

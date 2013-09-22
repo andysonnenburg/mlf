@@ -1,6 +1,7 @@
 {-# LANGUAGE
     FlexibleContexts
   , LambdaCase
+  , TypeFamilies
   , ViewPatterns #-}
 module Type.Graphic
        ( Type
@@ -21,7 +22,6 @@ module Type.Graphic
 import Control.Category ((<<<))
 import Control.Applicative
 import Control.Monad.Reader
-import Control.Monad.ST.Safe
 import Control.Monad.State.Strict
 
 import Data.Function (on)
@@ -29,13 +29,14 @@ import Data.IntMap.Strict (IntMap, (!))
 import qualified Data.IntMap.Strict as Map
 import qualified Data.IntSet as Set
 import Data.Maybe (fromMaybe)
-import Data.Semigroup
+import Data.Semigroup (Semigroup ((<>)), mempty)
 
 import Prelude hiding (read)
 
 import Int
 import Name
 import Path
+import Product (Product (..))
 import ST
 import Supply
 import Type.BindingFlag
@@ -71,7 +72,7 @@ fromRestricted :: ( MonadST m
                   , MonadSupply Int m
                   ) => R.Type (Name a) -> m (Type (World m) a)
 fromRestricted =
-  liftST . prune <=<
+  prune <=<
   run <<<
   fix (\ rec h -> \ case
     R.Bot -> newNodeSet h Bot
@@ -104,34 +105,40 @@ fromRestricted =
       flip runStateT mempty .
       flip runReaderT mempty
 
-prune :: Type s a -> ST s (Type s a)
+prune :: MonadST m => Type (World m) a -> m (Type (World m) a)
 prune (t, t_p, t_bf) = do
   xs <- execStateT (forNode_ t $ modify . flip Map.insert () . toInt) mempty
   return (t, Map.intersection t_p xs, Map.intersection t_bf xs)
 
-toSyntactic :: Type s a -> ST s (S.PolyType (Name a))
-toSyntactic (t_n, t_p, t_bf) = do
+toSyntactic :: MonadST m =>
+               Type (World m) a ->
+               m (Product Int (S.PolyType (Product Int) (Name a)))
+toSyntactic (t_n, t_p, t_bf) = liftST $ do
   bs <- getBoundNodes t_n t_p
-  fix (\ rec (Node (toInt -> x) c) -> do
+  fix (\ rec (Node (toInt -> x0) c) -> do
     t0 <- case c of
-      Bot -> return S.Bot
+      Bot -> return $ x0 :* S.Bot
       Arr t t' -> do
         Node a _ <- read =<< find t
         Node a' _ <- read =<< find t'
-        return $ S.Mono $ S.Arr (S.Var a) (S.Var a')
-    foldM (\ t n@(Node a _) -> do
+        return $ x0 :* S.Mono (x0 :* S.Arr (toInt a :* S.Var a) (toInt a' :* S.Var a'))
+    foldM (\ t n@(Node a@(toInt -> x) _) -> do
       t' <- rec n
-      return $ S.Forall a (t_bf!toInt a) t' t)
-      t0 (fromMaybe [] $ Map.lookup x bs)) =<< read =<< find t_n
+      return $ x :* S.Forall a (t_bf!x) t' t)
+      t0 (fromMaybe [] $ Map.lookup x0 bs)) =<< read =<< find t_n
 
-getBoundNodes :: NodeSet s a -> Paths -> ST s (IntMap [Node s a])
+getBoundNodes :: ( MonadST m
+                 , s ~ World m
+                 ) => NodeSet s a -> Paths -> m (IntMap [Node s a])
 getBoundNodes t_n t_p =
   flip execStateT mempty $ forNode_ t_n $ \ n@(Node (toInt -> x) _) ->
   case Path.uncons =<< Map.lookup x t_p of
     Nothing -> return ()
     Just (y, _) -> modify $ Map.alter (Just . maybe [n] (n:)) y
 
-forNode_ :: MonadST m => NodeSet (World m) a -> (Node (World m) a -> m b) -> m ()
+forNode_ :: ( MonadST m
+            , s ~ World m
+            ) => NodeSet s a -> (Node s a -> m b) -> m ()
 forNode_ t_n0 f = flip evalStateT mempty $ fix (\ rec t_n -> do
   n@(Node (toInt -> x) c) <- liftST $ read =<< find t_n
   xs <- get
@@ -142,7 +149,9 @@ forNode_ t_n0 f = flip evalStateT mempty $ fix (\ rec t_n -> do
       Arr a b -> rec a >> rec b
     void $ lift $ f n) t_n0
 
-forNode_' :: MonadST m => NodeSet (World m) a -> (Node (World m) a -> m b) -> m ()
+forNode_' :: ( MonadST m
+             , s ~ World m
+             ) => NodeSet s a -> (Node s a -> m b) -> m ()
 forNode_' t_n0 f = flip evalStateT mempty $ fix (\ rec t_n -> do
   n@(Node (toInt -> x) c) <- liftST $ read =<< find t_n
   xs <- get

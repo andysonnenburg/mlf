@@ -9,6 +9,7 @@
 module Lex (lex) where
 
 import Control.Applicative
+import Control.Comonad.Env
 import Control.Monad.Error
 import Control.Monad.State.Strict
 
@@ -21,6 +22,7 @@ import Data.Word (Word8)
 
 import Loc
 import Parser
+import Product
 import Token
 
 import Prelude hiding (lex)
@@ -46,46 +48,46 @@ $white+ ;
 @var { var }
 
 {
-lex :: Parser (Loc, Token)
+lex :: Parser (Product Loc Token)
 lex = do
   s@(ParserState pos xs) <- get
   case alexScan s 0 of
-    AlexEOF -> return (Loc pos pos, EOF)
-    AlexError (ParserState pos' _) -> lift $ Left (Loc pos pos', LexError)
+    AlexEOF -> return (Loc pos pos :* EOF)
+    AlexError (ParserState pos' _) -> throwError (Loc pos pos' :* LexError)
     AlexSkip s' _ -> put s' >> lex
     AlexToken s'@(ParserState pos' _) n m -> put s' >> m (Loc pos pos') xs n
 
-type Action = Loc -> ByteString -> Int -> Parser (Loc, Token)
+type Action = Loc -> ByteString -> Int -> Parser (Product Loc Token)
 
 forall :: Action
-forall loc _ _ = return (loc, Forall)
+forall loc _ _ = return (loc :* Forall)
 
 arrow :: Action
-arrow loc _ _ = return (loc, Arrow)
+arrow loc _ _ = return (loc :* Arrow)
 
 bottom :: Action
-bottom loc _ _ = return (loc, Bottom)
+bottom loc _ _ = return (loc :* Bottom)
 
 flexible :: Action
-flexible loc _ _ = return (loc, Flexible)
+flexible loc _ _ = return (loc :* Flexible)
 
 rigid :: Action
-rigid loc _ _ = return (loc, Rigid)
+rigid loc _ _ = return (loc :* Rigid)
 
 leftParen :: Action
-leftParen loc _ _ = return (loc, LeftParen)
+leftParen loc _ _ = return (loc :* LeftParen)
 
 rightParen :: Action
-rightParen loc _ _ = return (loc, RightParen)
+rightParen loc _ _ = return (loc :* RightParen)
 
 var :: Action
 var loc xs n = do
   xs' <- fromLazyByteString $ ByteString.take (fromIntegral n) xs
-  return (loc, Var xs')
+  return (loc :* Var xs')
 
 fromLazyByteString :: ByteString -> Parser Text
 fromLazyByteString =
-  either (\ e -> get >>= \ (ParserState pos _) -> lift $ Left (Loc pos pos, UnicodeException e))
+  either (\ e -> get >>= \ (ParserState pos _) -> throwError (Loc pos pos :* UnicodeException e))
   return .
   Text.decodeUtf8'
 

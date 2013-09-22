@@ -6,13 +6,14 @@ import Control.Applicative
 import Control.Category ((<<<))
 import Control.Comonad
 import Control.Comonad.Env
-import Control.Monad.Trans.Class
+import Control.Monad.Error
 
 import Data.Text (Text)
 
 import Lex
 import Loc
 import Parser
+import Product
 import Token (Token)
 import qualified Token
 import Type.Syntactic
@@ -26,7 +27,7 @@ import Prelude hiding (lex)
 %lexer { lexer } { (extract -> Token.EOF) } 
 %error { parseError }
 
-%tokentype { (Loc, Token) }
+%tokentype { Product Loc Token }
 
 %token
   FORALL { (extract -> Token.Forall) }
@@ -43,31 +44,33 @@ import Prelude hiding (lex)
 %%
 
 polyType
-  : monoType { Mono $1 }
-  | '_|_' { Bot }
-  | FORALL '(' var '<>' polyType ')' polyType { Forall $3 $4 $5 $7 }
+  : monoType { Mono $1 <% $1 }
+  | '_|_' { Bot <% $1 }
+  | FORALL '(' var '<>' polyType ')' polyType {
+      Forall (extract $3) (extract $4) $5 $7 <% $1 <@ $2 <@ $3 <@ $4 <@ $5 <@ $6 <@ $7
+    }
 
 monoType
-  : var { Var $1 }
-  | monoType '->' monoType { Arr $1 $3 }
-  | '(' monoType ')' { $2 }
+  : var { Var (extract $1) <% $1 }
+  | monoType '->' monoType { Arr $1 $3 <% $1 <@ $2 <@ $3 }
+  | '(' monoType ')' { $2 <@ $1 <@ $3 }
 
-var : VAR { case extract $1 of Token.Var x -> x }
+var : VAR { case extract $1 of Token.Var x -> x <% $1 }
 
 '<>'
-  : '>' { Flexible }
-  | '=' { Rigid }
+  : '>' { Flexible <% $1 }
+  | '=' { Rigid <% $1 }
 
 {
 infixl 4 <%>, <%
 
-parse :: Parser (PolyType Text)
+parse :: Parser (Product Loc (PolyType (Product Loc) Text))
 parse = polyType
 
-parseError :: (Loc, Token) -> Parser a
-parseError = lift <<< Left <<< (,) <$> ask <*> UnexpectedToken . extract
+parseError :: Product Loc Token -> Parser a
+parseError = throwError . fmap UnexpectedToken
 
-lexer :: ((Loc, Token) -> Parser a) -> Parser a
+lexer :: (Product Loc Token -> Parser a) -> Parser a
 lexer = (lex >>=)
 
 (<%>) :: Functor f => (a -> b) -> f a -> f b
