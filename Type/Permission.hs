@@ -13,6 +13,7 @@ import Data.IntMap.Strict (IntMap, (!))
 import qualified Data.IntMap.Strict as Map
 import Data.Semigroup
 
+import System.Console.Terminfo.Color (Color (ColorNumber))
 import qualified System.Console.Terminfo.Color as Color
 import System.Console.Terminfo.PrettyPrint
 
@@ -29,8 +30,11 @@ toScopedEffect = soft . Foreground . \ case
   M -> Color.White
   I -> Color.Yellow
   G -> Color.Green
-  O -> Color.Magenta
+  O -> orange
   R -> Color.Red
+
+orange :: Color
+orange = ColorNumber 202
 
 type Permissions = IntMap Permission
 
