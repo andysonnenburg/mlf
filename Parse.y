@@ -31,8 +31,8 @@ import Prelude hiding (lex)
 
 %token
   FORALL { (extract -> Token.Forall) }
-  '->' { (extract -> Token.Arrow) }
-  '_|_' { (extract -> Token.Bottom) }
+  '->' { (extract -> Token.Arr) }
+  '_|_' { (extract -> Token.Bot) }
   '>' { (extract -> Token.Flexible) }
   '=' { (extract -> Token.Rigid) }
   '(' { (extract -> Token.LeftParen) }

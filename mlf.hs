@@ -11,16 +11,15 @@ import Control.Monad.Error (MonadError)
 import Control.Monad.ST.Safe
 
 import Data.ByteString.UTF8 as ByteString
-import Data.Function (fix)
 import Data.IntMap.Strict ((!))
 
 import System.Console.CmdArgs
 import System.Console.Terminfo.PrettyPrint
 import System.Environment (getProgName)
 import System.Exit (exitFailure)
-import System.IO (hPrint, stderr)
+import System.IO (hPutStrLn, stderr)
 
-import Text.PrettyPrint.Free (pretty, putDoc)
+import Text.PrettyPrint.Free
 
 import Catch
 import Function
@@ -32,7 +31,8 @@ import qualified Stream
 import Sum
 import Supply
 import qualified Type.Graphic as Graphic
-import Type.Permission (getPermissions, toScopedEffect)
+import Type.Permission (getPermissions)
+import qualified Type.Permission as Permission
 import qualified Type.Restricted as Restricted
 import Type.Syntactic
 
@@ -58,7 +58,8 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
          Graphic.toSyntactic t_g
     |> \ case
       L e -> do
-        hPrint stderr e
+        hPutDoc stderr $ pretty e
+        hPutStrLn stderr ""
         exitFailure
       R a -> do
         putDoc $ pretty a
@@ -68,31 +69,25 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
        runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
          t_r <- Restricted.fromSyntactic =<< throws RenameError (rename t)
          t_g <- Graphic.fromRestricted t_r
-         p <- fmap toScopedEffect <$> getPermissions t_g
-         t' <- Graphic.toSyntactic t_g
-         return $ mapEnv (p!) t'
+         p <- fmap Permission.toScopedEffect <$> getPermissions t_g
+         mapEnv (p!) <$> Graphic.toSyntactic t_g
     |> \ case
       L e -> do
-        hPrint stderr e
+        hPutDoc stderr $ pretty e
+        hPutStrLn stderr ""
         exitFailure
       R a -> displayLn a
-
-mapEnv :: (a -> b) ->
-          Product a (PolyType (Product a) c) ->
-          Product b (PolyType (Product b) c)
-mapEnv f = local f . fmap mapPoly
-  where
-    mapPoly = fix $ \ rec -> \ case
-      Mono w -> Mono $ local f $ mapMono <$> w
-      Bot -> Bot
-      Forall a bf w w' -> Forall a bf (local f (rec <$> w)) (local f (rec <$> w'))
-    mapMono = fix $ \ rec -> \ case
-      Var a -> Var a
-      Arr w w' -> Arr (local f (rec <$> w)) (local f (rec <$> w'))
 
 data Error e a
   = ParseError e ParseError
   | RenameError e (RenameError a) deriving Show
+
+instance ( Pretty e
+         , Pretty a
+         ) => Pretty (Error e a) where
+  pretty = \ case
+    ParseError e a -> pretty e <> char ':' <+> pretty a
+    RenameError e a -> pretty e <> char ':' <+> pretty a
 
 throws :: (MonadCatch (Product a b) m n, MonadError e n) => (a -> b -> e) -> m c -> n c
 throws f = mapE (f <$> ask <*> extract)

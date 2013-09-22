@@ -12,11 +12,12 @@
 module Type.Syntactic
        ( MonoType (..)
        , PolyType (..)
+       , mapEnv
        , BindingFlag (..)
        ) where
 
 import Control.Category ((>>>))
-import Control.Comonad.Env
+import Control.Comonad.Env (Comonad, ComonadEnv, ask, extract)
 
 import Data.Foldable
 import Data.Function (fix)
@@ -28,6 +29,7 @@ import Text.PrettyPrint.Free
 
 import Function
 import Name
+import Product
 import Type.BindingFlag
 
 data MonoType w a
@@ -47,6 +49,19 @@ deriving instance ( Show a
                   , Show (w (MonoType w a))
                   , Show (w (PolyType w a))
                   ) => Show (PolyType w a)
+
+mapEnv :: (a -> b) ->
+          Product a (PolyType (Product a) c) ->
+          Product b (PolyType (Product b) c)
+mapEnv f = mapPoly
+  where
+    mapPoly = fix $ \ rec -> local f . fmap (\ case
+      Mono w -> Mono $ mapMono w
+      Bot -> Bot
+      Forall a bf w w' -> Forall a bf (rec w) (rec w'))
+    mapMono = fix $ \ rec -> local f . fmap (\ case
+      Var a -> Var a
+      Arr w w' -> Arr (rec w) (rec w'))
 
 instance (Comonad w, Pretty a) => Pretty (PolyType w (Name a)) where
   pretty = prettyPoly

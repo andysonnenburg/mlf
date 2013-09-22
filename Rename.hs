@@ -11,11 +11,16 @@ import qualified Data.HashMap.Strict as Map
 import Data.Monoid
 import Data.Traversable (Traversable, for, traverse)
 
+import Text.PrettyPrint.Free
+
 import Name
 import Supply
 import Type.Syntactic
 
 data RenameError a = NotFound a deriving Show
+
+instance Pretty a => Pretty (RenameError a) where
+  pretty (NotFound a) = pretty a <+> text "not" <+> text "found"
 
 rename :: ( Eq a
           , Hashable a

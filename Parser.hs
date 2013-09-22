@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Parser
        ( Parser
        , runParser
@@ -9,6 +10,8 @@ import Control.Monad.State.Strict
 
 import Data.ByteString (ByteString)
 import Data.Text.Encoding.Error
+
+import Text.PrettyPrint.Free
 
 import Loc
 import Product
@@ -26,3 +29,9 @@ data ParseError
   = LexError
   | UnicodeException UnicodeException
   | UnexpectedToken Token deriving Show
+
+instance Pretty ParseError where
+  pretty = \ case
+    LexError -> text "lex" <+> text "error"
+    UnicodeException e -> text $ show e
+    UnexpectedToken t -> text "unexpected" <+> pretty t

@@ -20,12 +20,12 @@ import Data.Text (Text)
 import qualified Data.Text.Encoding as Text
 import Data.Word (Word8)
 
+import Prelude hiding (lex)
+
 import Loc
 import Parser
 import Product
 import Token
-
-import Prelude hiding (lex)
 }
 
 $lowercase = [a-z_]
@@ -39,8 +39,8 @@ $numeric = [0-9]
 $white+ ;
 
 "forall" { forall }
-"->" { arrow }
-"_|_" { bottom }
+"->" { arr' }
+"_|_" { bot }
 ">" { flexible }
 "=" { rigid }
 "(" { leftParen }
@@ -52,33 +52,33 @@ lex :: Parser (Product Loc Token)
 lex = do
   s@(ParserState pos xs) <- get
   case alexScan s 0 of
-    AlexEOF -> return (Loc pos pos :* EOF)
-    AlexError (ParserState pos' _) -> throwError (Loc pos pos' :* LexError)
+    AlexEOF -> return $ Loc pos pos :* EOF
+    AlexError (ParserState pos' _) -> throwError $ Loc pos pos' :* LexError
     AlexSkip s' _ -> put s' >> lex
     AlexToken s'@(ParserState pos' _) n m -> put s' >> m (Loc pos pos') xs n
 
 type Action = Loc -> ByteString -> Int -> Parser (Product Loc Token)
 
 forall :: Action
-forall loc _ _ = return (loc :* Forall)
+forall loc _ _ = return $ loc :* Forall
 
-arrow :: Action
-arrow loc _ _ = return (loc :* Arrow)
+arr' :: Action
+arr' loc _ _ = return $ loc :* Arr
 
-bottom :: Action
-bottom loc _ _ = return (loc :* Bottom)
+bot :: Action
+bot loc _ _ = return $ loc :* Bot
 
 flexible :: Action
-flexible loc _ _ = return (loc :* Flexible)
+flexible loc _ _ = return $ loc :* Flexible
 
 rigid :: Action
-rigid loc _ _ = return (loc :* Rigid)
+rigid loc _ _ = return $ loc :* Rigid
 
 leftParen :: Action
-leftParen loc _ _ = return (loc :* LeftParen)
+leftParen loc _ _ = return $ loc :* LeftParen
 
 rightParen :: Action
-rightParen loc _ _ = return (loc :* RightParen)
+rightParen loc _ _ = return $ loc :* RightParen
 
 var :: Action
 var loc xs n = do
