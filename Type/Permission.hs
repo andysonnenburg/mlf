@@ -66,11 +66,12 @@ getPermissions (t_n, t_p, t_bf) = liftST $ do
   downs <- flip execStateT mempty $ forNode_' t_n $ \ (Node (toInt -> x) _) ->
     case Path.uncons =<< Map.lookup x t_p of
       Nothing -> modify $ Map.insert x Green
-      Just (y, _) -> modify . Map.insert x =<< (t_bf!x,) <$> gets (!y) <$$> \ case
-        (Flexible, Green) -> Green
-        (Rigid, _) -> Orange
-        (Flexible, Orange) -> Red
-        (Flexible, Red) -> Red
+      Just (y, _) ->
+        modify . Map.insert x =<<
+        (t_bf!x,) <$> gets (!y) <$$> \ case
+          (Flexible, Green) -> Green
+          (Rigid, _) -> Orange
+          (Flexible, _) -> Red
   ups <- flip execStateT mempty $ forNode_ t_n $ \ (Node (toInt -> x) c) -> do
     modify $ Map.alter (\ case
       _ | poly c -> Just Polymorphic

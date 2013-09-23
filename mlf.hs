@@ -39,13 +39,13 @@ import Type.Syntactic
 data MLF
   = Echo { input :: String }
   | Permissions { input :: String }
-  | Unify { input :: String } deriving (Typeable, Data)
+  | Unify { input :: String, names :: [String] } deriving (Typeable, Data)
 
 mlf :: String -> MLF
 mlf progName =
-  modes [ Echo (def &= argPos 0 &= typ "STRING")
-        , Permissions (def &= argPos 0 &= typ "STRING")
-        , Unify (def &= argPos 0 &= typ "STRING")
+  modes [ Echo (def &= argPos 0 &= typ "TYPE")
+        , Permissions (def &= argPos 0 &= typ "TYPE")
+        , Unify (def &= argPos 0 &= typ "TYPE") (def &= args &= typ "VAR")
         ] &= program progName
 
 main :: IO ()
@@ -77,6 +77,9 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
         hPutStrLn stderr ""
         exitFailure
       R a -> displayLn a
+  Unify {..} -> do
+    print input
+    print names
 
 data Error e a
   = ParseError e ParseError

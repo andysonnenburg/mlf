@@ -16,8 +16,7 @@ module Type.Syntactic
        , BindingFlag (..)
        ) where
 
-import Control.Category ((>>>))
-import Control.Comonad.Env (Comonad, ComonadEnv, ask, extract)
+import Control.Comonad.Env (ComonadEnv)
 
 import Data.Foldable
 import Data.Function (fix)
@@ -27,7 +26,6 @@ import System.Console.Terminfo.PrettyPrint
 
 import Text.PrettyPrint.Free
 
-import Function
 import Name
 import Product
 import Type.BindingFlag
@@ -40,6 +38,20 @@ deriving instance ( Show a
                   , Show (w (MonoType w a))
                   ) => Show (MonoType w a)
 
+instance ( Pretty a
+         , Pretty (w (MonoType w (Name a)))
+         ) => Pretty (MonoType w (Name a)) where
+  pretty = \ case
+    Var x -> prettyName x
+    Arr a b -> pretty a <+> text "->" <+> pretty b
+
+instance ( PrettyTerm a
+         , PrettyTerm (w (MonoType w (Name a)))
+         ) => PrettyTerm (MonoType w (Name a)) where
+  prettyTerm = \ case
+    Var x -> prettyTermName x
+    Arr a b -> prettyTerm a <+> text "->" <+> prettyTerm b
+
 data PolyType w a
   = Mono (w (MonoType w a))
   | Bot
@@ -49,6 +61,49 @@ deriving instance ( Show a
                   , Show (w (MonoType w a))
                   , Show (w (PolyType w a))
                   ) => Show (PolyType w a)
+
+instance ( Pretty a
+         , Pretty (w (MonoType w (Name a)))
+         , Pretty (w (PolyType w (Name a)))
+         ) => Pretty (PolyType w (Name a)) where
+  pretty = \ case
+    Mono t -> pretty t
+    Bot -> text "_|_"
+    Forall x bf a b ->
+      text "forall" <+>
+      lparen <>
+      prettyName x <+>
+      pretty bf <+>
+      pretty a <>
+      rparen <+>
+      pretty b
+
+prettyName :: Pretty a => Name a -> Doc e
+prettyName = \ case
+  Name Nothing x -> char '$' <> pretty x
+  Name (Just a) _ -> pretty a
+
+instance ( ComonadEnv ScopedEffect w
+         , PrettyTerm a
+         , PrettyTerm (w (MonoType w (Name a)))
+         , PrettyTerm (w (PolyType w (Name a)))
+         ) => PrettyTerm (PolyType w (Name a)) where
+  prettyTerm = \ case
+    Mono t -> prettyTerm t
+    Bot -> text "_|_"
+    Forall x bf a b ->
+      text "forall" <+>
+      lparen <>
+      prettyTermName x <+>
+      pretty bf <+>
+      prettyTerm a <>
+      rparen <+>
+      prettyTerm b
+
+prettyTermName :: PrettyTerm a => Name a -> TermDoc
+prettyTermName = \ case
+  Name Nothing x -> char '$' <> prettyTerm x
+  Name (Just a) _ -> prettyTerm a
 
 mapEnv :: (a -> b) ->
           Product a (PolyType (Product a) c) ->
@@ -62,47 +117,3 @@ mapEnv f = mapPoly
     mapMono = fix $ \ rec -> local f . fmap (\ case
       Var a -> Var a
       Arr w w' -> Arr (rec w) (rec w'))
-
-instance (Comonad w, Pretty a) => Pretty (PolyType w (Name a)) where
-  pretty = prettyPoly
-    where
-      prettyPoly = fix $ \ rec -> \ case
-        Mono t -> prettyMono t
-        Bot -> text "_|_"
-        Forall x bf (extract -> a) (extract -> b) ->
-          text "forall" <+>
-          lparen <>
-          prettyName x <+>
-          pretty bf <+>
-          rec a <>
-          rparen <+>
-          rec b
-      prettyMono = fix $ \ rec -> extract >>> \ case
-        Var x -> prettyName x
-        Arr a b -> rec a <+> text "->" <+> rec b
-      prettyName = \ case
-        Name Nothing x -> char '$' <> pretty x
-        Name (Just a) _ -> pretty a
-
-instance ( ComonadEnv ScopedEffect w
-         , PrettyTerm a
-         ) => PrettyTerm (PolyType w (Name a)) where
-  prettyTerm = prettyPoly
-    where
-      prettyPoly = fix $ \ rec -> \ case
-        Mono t -> prettyMono t
-        Bot -> text "_|_"
-        Forall x bf a b ->
-          text "forall" <+>
-          lparen <>
-          prettyName x <+>
-          pretty bf <+>
-          with (ask a) (rec $ extract a) <>
-          rparen <+>
-          with (ask b) (rec $ extract b)
-      prettyMono = fix $ \ rec w -> with (ask w) $ extract w |> \ case
-        Var x -> prettyName x
-        Arr a b -> rec a <+> text "->" <+> rec b
-      prettyName = \ case
-        Name Nothing x -> char '$' <> prettyTerm x
-        Name (Just a) _ -> prettyTerm a
