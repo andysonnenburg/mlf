@@ -6,8 +6,7 @@ import Data.Text (Text)
 import Text.PrettyPrint.Free
 
 data Token
-  = Forall
-  | Arr
+  = Arr
   | Bot
   | Flexible
   | Rigid
@@ -18,7 +17,6 @@ data Token
 
 instance Pretty Token where
   pretty = \ case
-    Forall -> text "forall"
     Arr -> text "->"
     Bot -> text "_|_"
     Flexible -> char '>'

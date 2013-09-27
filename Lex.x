@@ -38,7 +38,6 @@ $numeric = [0-9]
 
 $white+ ;
 
-"forall" { forall }
 "->" { arr' }
 "_|_" { bot }
 ">" { flexible }
@@ -58,9 +57,6 @@ lex = do
     AlexToken s'@(ParserState pos' _) n m -> put s' >> m (Loc pos pos') xs n
 
 type Action = Loc -> ByteString -> Int -> Parser (Product Loc Token)
-
-forall :: Action
-forall loc _ _ = return $ loc :* Forall
 
 arr' :: Action
 arr' loc _ _ = return $ loc :* Arr

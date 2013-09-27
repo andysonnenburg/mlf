@@ -53,7 +53,7 @@ instance Monad m => Monad (SupplyT s m) where
 instance MonadTrans (SupplyT s) where
   lift = SupplyT . lift
 
-instance MonadHoist (SupplyT s) where
+instance FunctorHoist (SupplyT s) where
   hoist f = SupplyT . hoist f . unSupplyT
 
 instance (Applicative m, Monad m) => MonadSupply s (SupplyT s m) where

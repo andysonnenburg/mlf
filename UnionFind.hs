@@ -9,6 +9,7 @@ module UnionFind
        ) where
 
 import Control.Applicative
+import Control.Category ((<<<))
 import Control.Monad
 import Control.Monad.ST.Safe
 
@@ -18,6 +19,7 @@ import Data.Semigroup
 
 import Prelude hiding (elem, read)
 
+import ST
 import STIntRef
 
 newtype Set s a = Set { unSet :: STRef s (Link s a) }
@@ -28,13 +30,15 @@ data Link s a
   = Repr {-# UNPACK #-} !(STIntRef s) {-# UNPACK #-} !(STRef s a)
   | Link {-# UNPACK #-} !(STRef s (Link s a))
 
-new :: a -> ST s (Set s a)
-new a =
-  Repr <$> newSTIntRef minBound <*> newSTRef a >>=
-  fmap Set . newSTRef
+new :: MonadST m => a -> m (Set (World m) a)
+new =
+  liftST <<<
+  fmap Set . newSTRef <=<
+  liftA2 Repr (newSTIntRef minBound) <<<
+  newSTRef
 
-union :: Semigroup a => Set s a -> Set s a -> ST s ()
-union x y = do
+union :: (Semigroup a, MonadST m) => Set (World m) a -> Set (World m) a -> m ()
+union x y = liftST $ do
   Three xRank xRef x' <- find' x
   Three yRank yRef y' <- find' y
   when (x' /= y') $
@@ -50,13 +54,15 @@ union x y = do
         writeSTRef y' $ Link x'
         writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
 
-find :: Set s a -> ST s (Ref s a)
-find = fmap (\ (Two a _) -> Ref a) . fix (\ rec set -> readSTRef set >>= \ case
-  Repr _ elem -> return $! Two elem set
-  Link set' -> do
-    two@(Two _ set'') <- rec set'
-    writeSTRef set $ Link set''
-    return two) . unSet
+find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
+find =
+  liftST .
+  fmap (\ (Two a _) -> Ref a) . fix (\ rec set -> readSTRef set >>= \ case
+    Repr _ elem -> return $! Two elem set
+    Link set' -> do
+      two@(Two _ set'') <- rec set'
+      writeSTRef set $ Link set''
+      return two) . unSet
 
 find' :: Set s a -> ST s (Three s a)
 find' = fix (\ rec set -> readSTRef set >>= \ case
@@ -66,9 +72,9 @@ find' = fix (\ rec set -> readSTRef set >>= \ case
     writeSTRef set $ Link set''
     return three) . unSet
 
-read :: Ref s a -> ST s a
+read :: MonadST m => Ref (World m) a -> m a
 {-# INLINE read #-}
-read = readSTRef . unRef
+read = liftST . readSTRef . unRef
 
 data Two s a =
   Two

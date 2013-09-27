@@ -19,7 +19,6 @@ import System.Console.Terminfo.PrettyPrint
 
 import Applicative
 import Int
-import qualified Path
 import ST
 import Type.Graphic
 
@@ -62,11 +61,11 @@ fromUp x = \ case
   Polymorphic -> x
 
 getPermissions :: MonadST m => Type (World m) a -> m Permissions
-getPermissions (t_n, t_p, t_bf) = liftST $ do
+getPermissions (t_n, t_b, t_bf) = liftST $ do
   downs <- flip execStateT mempty $ forNode_' t_n $ \ (Node (toInt -> x) _) ->
-    case Path.uncons =<< Map.lookup x t_p of
+    case Map.lookup x t_b of
       Nothing -> modify $ Map.insert x Green
-      Just (y, _) ->
+      Just y ->
         modify . Map.insert x =<<
         (t_bf!x,) <$> gets (!y) <$$> \ case
           (Flexible, Green) -> Green
@@ -77,9 +76,9 @@ getPermissions (t_n, t_p, t_bf) = liftST $ do
       _ | poly c -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just up -> Just up) x
-    case Path.uncons =<< Map.lookup x t_p of
+    case Map.lookup x t_b of
       Nothing -> return ()
-      Just (y, _) ->
+      Just y ->
         modify . Map.insertWith (<>) y =<<
         (t_bf!x,) <$> gets (!x) <$$> \ case
           (_, Inert) -> Inert

@@ -2,16 +2,23 @@
     DeriveDataTypeable
   , FlexibleContexts
   , LambdaCase
-  , RecordWildCards #-}
+  , RecordWildCards
+  , TupleSections
+  , TypeFamilies #-}
 module Main (main) where
 
 import Control.Applicative
-import Control.Comonad.Env (ask, extract)
+import Control.Comonad.Env (ComonadEnv, ask, extract)
 import Control.Monad.Error (MonadError)
 import Control.Monad.ST.Safe
+import Control.Monad.State.Strict
 
 import Data.ByteString.UTF8 as ByteString
+import qualified Data.HashSet as Set
 import Data.IntMap.Strict ((!))
+import Data.Monoid (mempty)
+import Data.Text (Text)
+import qualified Data.Text as Text
 
 import System.Console.CmdArgs
 import System.Console.Terminfo.PrettyPrint
@@ -21,20 +28,27 @@ import System.IO (hPutStrLn, stderr)
 
 import Text.PrettyPrint.Free
 
+import Prelude hiding (read)
+
 import Catch
 import Function
+import Hoist
+import Name
 import Parse
 import Parser
-import Product
+import Product (local)
 import Rename
+import ST
 import qualified Stream
 import Sum
 import Supply
+import Type.Graphic (Node (Node), NodeSet, forNodeSet_)
 import qualified Type.Graphic as Graphic
 import Type.Permission (getPermissions)
 import qualified Type.Permission as Permission
 import qualified Type.Restricted as Restricted
-import Type.Syntactic
+import Unify
+import UnionFind
 
 data MLF
   = Echo { input :: String }
@@ -51,9 +65,9 @@ mlf progName =
 main :: IO ()
 main = mlf <$> getProgName >>= cmdArgs >>= \ case
   Echo {..} ->
-    do t <- throws ParseError . runParser parse $ ByteString.fromString input
+    do t <- mapEE ParseError . runParser parse $ ByteString.fromString input
        runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
-         t_r <- Restricted.fromSyntactic =<< throws RenameError (rename t)
+         t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
          t_g <- Graphic.fromRestricted t_r
          Graphic.toSyntactic t_g
     |> \ case
@@ -65,25 +79,48 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
         putDoc $ pretty a
         putStrLn ""
   Permissions {..} ->
-    do t <- throws ParseError . runParser parse $ ByteString.fromString input
+    do t <- mapEE ParseError . runParser parse $ ByteString.fromString input
        runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
-         t_r <- Restricted.fromSyntactic =<< throws RenameError (rename t)
+         t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
          t_g <- Graphic.fromRestricted t_r
          p <- fmap Permission.toScopedEffect <$> getPermissions t_g
-         mapEnv (p!) <$> Graphic.toSyntactic t_g
+         hoist' (local (p!)) <$> Graphic.toSyntactic t_g
     |> \ case
       L e -> do
         hPutDoc stderr $ pretty e
         hPutStrLn stderr ""
         exitFailure
       R a -> displayLn a
-  Unify {..} -> do
-    print input
-    print names
+  Unify {..} ->
+    do t <- mapEE ParseError . runParser parse $ ByteString.fromString input
+       runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
+         t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
+         t_g@(t_n, _, _) <- Graphic.fromRestricted t_r
+         t_ns <- getNodes t_n names
+         Graphic.toSyntactic =<< mapE UnifyError (unify t_g t_ns)
+    |> \ case
+      L e -> do
+        hPutDoc stderr $ pretty e
+        hPutStrLn stderr ""
+        exitFailure
+      R a -> do
+        putDoc $ pretty a
+        putStrLn ""
+
+getNodes :: ( MonadST m
+            , s ~ World m
+            ) => NodeSet s Text -> [String] -> m [NodeSet s Text]
+getNodes t_n0 xs = flip execStateT mempty $ forNodeSet_ t_n0 $ \ t_n ->
+  find t_n >>= read >>= \ case
+    Node (Name (Just y) _) _ | Set.member y ys -> modify (t_n:)
+    _ -> return ()
+  where
+    ys = Set.fromList $ map Text.pack xs
 
 data Error e a
   = ParseError e ParseError
-  | RenameError e (RenameError a) deriving Show
+  | RenameError e (RenameError a)
+  | UnifyError (UnifyError a) deriving Show
 
 instance ( Pretty e
          , Pretty a
@@ -91,6 +128,10 @@ instance ( Pretty e
   pretty = \ case
     ParseError e a -> pretty e <> char ':' <+> pretty a
     RenameError e a -> pretty e <> char ':' <+> pretty a
+    UnifyError a -> pretty a
 
-throws :: (MonadCatch (Product a b) m n, MonadError e n) => (a -> b -> e) -> m c -> n c
-throws f = mapE (f <$> ask <*> extract)
+mapEE :: ( ComonadEnv a w
+         , MonadCatch (w b) m n
+         , MonadError e n
+         ) => (a -> b -> e) -> m c -> n c
+mapEE f = mapE (f <$> ask <*> extract)

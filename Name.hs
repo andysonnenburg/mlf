@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, LambdaCase #-}
 module Name
        ( Name (..)
        , supplyName
@@ -7,6 +7,10 @@ module Name
 import Data.Functor
 import Data.Hashable (Hashable (hashWithSalt))
 import Data.Semigroup
+
+import System.Console.Terminfo.PrettyPrint
+
+import Text.PrettyPrint.Free
 
 import Int
 import Supply
@@ -26,6 +30,14 @@ instance Hashable (Name a) where
 
 instance IsInt (Name a) where
   toInt (Name _ x) = x
+
+instance Pretty a => Pretty (Name a) where
+  pretty (Name x y) = maybe (char '$' <> pretty y) pretty x
+
+instance PrettyTerm a => PrettyTerm (Name a) where
+  prettyTerm = \ case
+    Name Nothing x -> char '$' <> prettyTerm x
+    Name (Just a) _ -> prettyTerm a
 
 supplyName :: MonadSupply Int m => m (Name a)
 supplyName = Name Nothing <$> supply

@@ -30,7 +30,6 @@ import Prelude hiding (lex)
 %tokentype { Product Loc Token }
 
 %token
-  FORALL { (extract -> Token.Forall) }
   '->' { (extract -> Token.Arr) }
   '_|_' { (extract -> Token.Bot) }
   '>' { (extract -> Token.Flexible) }
@@ -46,8 +45,8 @@ import Prelude hiding (lex)
 polyType
   : monoType { Mono $1 <% $1 }
   | '_|_' { Bot <% $1 }
-  | FORALL '(' var '<>' polyType ')' polyType {
-      Forall (extract $3) (extract $4) $5 $7 <% $1 <@ $2 <@ $3 <@ $4 <@ $5 <@ $6 <@ $7
+  | '(' var '<>' polyType ')' polyType {
+      Forall (extract $2) (extract $3) $4 $6 <% $1 <@ $2 <@ $3 <@ $4 <@ $5 <@ $6
     }
 
 monoType

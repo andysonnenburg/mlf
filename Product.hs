@@ -47,6 +47,7 @@ instance ComonadEnv e (Product e) where
   ask (e :* _) = e
 
 instance Pretty b => Pretty (Product a b) where
+  {-# INLINE pretty #-}
   pretty (_ :* b) = pretty b
 
 instance PrettyTerm b => PrettyTerm (Product ScopedEffect b) where
