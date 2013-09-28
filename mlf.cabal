@@ -23,6 +23,7 @@ executable mlf
     IntSet,
     Lex,
     Loc,
+    Monad,
     Name,
     Parse,
     Parser,

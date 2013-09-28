@@ -13,8 +13,6 @@ module Type.Graphic
        , BindingFlag (..)
        , fromRestricted
        , toSyntactic
-       , toMonoType
-       , getBoundNodes
        , forNode_
        , forNodeSet_
        , forNode_'
@@ -117,7 +115,7 @@ toSyntactic :: MonadST m =>
                Type (World m) a ->
                m (Product Int (S.PolyType (Product Int) (Name a)))
 toSyntactic (t_n, t_b, t_bf) = do
-  bs <- getBoundNodes t_n t_b
+  boundNodes <- getBoundNodes t_n t_b
   fix (\ rec (Node (toInt -> x0) c) -> do
     t0 <- case c of
       Bot -> return $ x0 :* S.Bot
@@ -128,12 +126,7 @@ toSyntactic (t_n, t_b, t_bf) = do
     foldM (\ t n@(Node a@(toInt -> x) _) -> do
       t' <- rec n
       return $ x :* S.Forall a (t_bf!x) t' t)
-      t0 (fromMaybe [] $ Map.lookup x0 bs)) =<< read =<< find t_n
-
-toMonoType :: MonadST m =>
-              NodeSet s a ->
-              m (Product Int (S.MonoType (Product Int) (Name a)))
-toMonoType = undefined
+      t0 (fromMaybe [] $ Map.lookup x0 boundNodes)) =<< read =<< find t_n
 
 getBoundNodes :: ( MonadST m
                  , s ~ World m

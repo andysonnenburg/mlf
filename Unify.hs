@@ -32,6 +32,7 @@ import Hoist
 import Id
 import Int
 import qualified IntSet as Set
+import Monad
 import Name
 import Path (Path, lca)
 import qualified Path
@@ -147,14 +148,16 @@ getPartiallyGrafted t_n0 g =
           rec a
           rec b) t_n0
   where
-    markPartiallyGrafted t_n p = do
+    markPartiallyGrafted = fix $ \ rec t_n p -> do
       Node (toInt -> x) c <- read =<< find t_n
+      marked <- gets $ Map.member x
       modify $ insertOne x p
-      case c of
-        Bot -> return ()
-        Arr a b -> do
-          markPartiallyGrafted a x
-          markPartiallyGrafted b x        
+      unless marked $
+        case c of
+          Bot -> return ()
+          Arr a b -> do
+            rec a x
+            rec b x
 
 insertOne :: Int -> Int -> IntMap IntSet -> IntMap IntSet
 insertOne k v = Map.alter (Just . \ case
@@ -202,14 +205,6 @@ x `mergedInto` y = modify $ \ s@S {..} ->
                 fromMaybe (Set.singleton y)) y $
                Map.delete x merged }
 
-unlessGreen :: Monad m => Permission -> m () -> m ()
-unlessGreen G _ = return ()
-unlessGreen _ m = m
-
-whenRed :: Monad m => Permission -> m () -> m ()
-whenRed R m = m
-whenRed _ _ = return ()
-
 whenCyclic :: MonadST m => NodeSet (World m) a -> m () -> m ()
 whenCyclic t_n0 m =
   flip runReaderT mempty $
@@ -232,11 +227,3 @@ traversePairs_ f = \ case
   x0:xs -> fix (\ rec x -> \ case
     [] -> pure ()
     y:ys -> f x y *> rec y ys) x0 xs
-
-whenM :: Monad m => m Bool -> m () -> m ()
-whenM p m = p >>= \ case
-  True -> m
-  False -> return ()
-
-extract' :: (Comonad f, FunctorHoist t) => f (t f a) -> t Id a
-extract' = hoist (Id . extract) . extract

@@ -10,6 +10,7 @@ module Type.Restricted
        , fromSyntactic
        ) where
 
+import Control.Applicative
 import Control.Category ((>>>))
 import Control.Comonad
 
@@ -38,15 +39,10 @@ fromSyntactic = fromPoly
     fromPoly = fix $ \ rec -> extract >>> \ case
       S.Mono t -> fromMono t
       S.Bot -> return Bot
-      S.Forall x bf a b -> do
-        a' <- rec a
-        b' <- rec b
-        return $ Forall x bf a' b'
+      S.Forall x bf a b -> Forall x bf <$> rec a <*> rec b
     fromMono = fix $ \ rec -> extract >>> \ case
       S.Var x -> return $ Var x
       S.Arr t u -> do
-        t' <- rec t
         a <- supplyName
-        u' <- rec u
         b <- supplyName
-        return $ Forall a Flexible t' $ Forall b Flexible u' $ Arr a b
+        Forall a Flexible <$> rec t <*> (Forall b Flexible <$> rec u <*> pure (Arr a b))

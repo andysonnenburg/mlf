@@ -1,6 +1,8 @@
 {-# LANGUAGE LambdaCase, TupleSections, ViewPatterns #-}
 module Type.Permission
        ( Permission (..)
+       , unlessGreen
+       , whenRed
        , toScopedEffect
        , Permissions
        , getPermissions
@@ -23,6 +25,14 @@ import ST
 import Type.Graphic
 
 data Permission = M | I | G | O | R deriving Show
+
+unlessGreen :: Monad m => Permission -> m () -> m ()
+unlessGreen G _ = return ()
+unlessGreen _ m = m
+
+whenRed :: Monad m => Permission -> m () -> m ()
+whenRed R m = m
+whenRed _ _ = return ()
 
 toScopedEffect :: Permission -> ScopedEffect
 toScopedEffect = soft . Foreground . \ case
