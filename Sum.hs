@@ -59,6 +59,11 @@ instance Monad m => Monad (SumT e m) where
     L e -> return (L e)
     R a -> runSumT (f a)
 
+instance MonadFix m => MonadFix (SumT e m) where
+  mfix f = SumT $ mfix $ \ a -> runSumT $ f $ case a of
+    R r -> r
+    _ -> error "empty mfix argument"
+
 instance MonadTrans (SumT e) where
   lift = SumT . liftM R
 

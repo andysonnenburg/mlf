@@ -12,6 +12,10 @@ instance Semigroup BindingFlag where
   _ <> Rigid = Rigid
   Flexible <> Flexible = Flexible
 
+instance Monoid BindingFlag where
+  mempty = Flexible
+  mappend = (<>)
+
 instance Pretty BindingFlag where
   pretty = \ case
     Flexible -> char '>'

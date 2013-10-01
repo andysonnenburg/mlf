@@ -4,6 +4,7 @@ module UnionFind
        , new
        , union
        , find
+       , write
        , Ref
        , read
        ) where
@@ -63,6 +64,12 @@ find =
       two@(Two _ set'') <- rec set'
       writeSTRef set $ Link set''
       return two) . unSet
+
+write :: MonadST m => Set (World m) a -> a -> m ()
+{-# INLINE write #-}
+write set a = liftST $ do
+  ref <- find set
+  writeSTRef (unRef ref) a
 
 find' :: Set s a -> ST s (Three s a)
 find' = fix (\ rec set -> readSTRef set >>= \ case

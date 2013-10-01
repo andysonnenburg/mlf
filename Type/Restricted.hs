@@ -3,7 +3,8 @@
   , DeriveFunctor
   , DeriveTraversable
   , FlexibleContexts
-  , LambdaCase #-}
+  , LambdaCase
+  , ViewPatterns #-}
 module Type.Restricted
        ( Type (..)
        , BindingFlag (..)
@@ -40,9 +41,9 @@ fromSyntactic = fromPoly
       S.Mono t -> fromMono t
       S.Bot -> return Bot
       S.Forall x bf a b -> Forall x bf <$> rec a <*> rec b
-    fromMono = fix $ \ rec -> extract >>> \ case
+    fromMono = fix $ \ rec -> \ case
       S.Var x -> return $ Var x
-      S.Arr t u -> do
+      S.Arr (extract -> t) (extract -> u) -> do
         a <- supplyName
         b <- supplyName
         Forall a Flexible <$> rec t <*> (Forall b Flexible <$> rec u <*> pure (Arr a b))

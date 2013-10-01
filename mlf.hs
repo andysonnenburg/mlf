@@ -33,6 +33,7 @@ import Prelude hiding (read)
 import Catch
 import Function
 import Hoist
+import IntMap (toIntMap)
 import Name
 import Parse
 import Parser
@@ -83,7 +84,7 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
        runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
          t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
          t_g <- Graphic.fromRestricted t_r
-         p <- fmap Permission.toScopedEffect <$> getPermissions t_g
+         p <- toIntMap . fmap Permission.toScopedEffect <$> getPermissions t_g
          hoist' (local (p!)) <$> Graphic.toSyntactic t_g
     |> \ case
       L e -> do
@@ -95,9 +96,10 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
     do t <- mapEE ParseError . runParser parse $ ByteString.fromString input
        runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
          t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
-         t_g@(t_n, _, _) <- Graphic.fromRestricted t_r
-         t_ns <- getNodes t_n names
-         Graphic.toSyntactic =<< mapE UnifyError (unify t_g t_ns)
+         t_g <- Graphic.fromRestricted t_r
+         ts <- getNodeSets t_g names
+         mapE UnifyError (unify t_g ts)
+         Graphic.toSyntactic t_g
     |> \ case
       L e -> do
         hPutDoc stderr $ pretty e
@@ -107,12 +109,11 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
         putDoc $ pretty a
         putStrLn ""
 
-getNodes :: ( MonadST m
-            , s ~ World m
-            ) => NodeSet s Text -> [String] -> m [NodeSet s Text]
-getNodes t_n0 xs = flip execStateT mempty $ forNodeSet_ t_n0 $ \ t_n ->
+getNodeSets :: (MonadST m, s ~ World m)
+            => NodeSet s Text -> [String] -> m [NodeSet s Text]
+getNodeSets t_n0 xs = flip execStateT mempty $ forNodeSet_ t_n0 $ \ t_n ->
   find t_n >>= read >>= \ case
-    Node (Name (Just y) _) _ | Set.member y ys -> modify (t_n:)
+    Node (Name (Just y) _) _ _ | Set.member y ys -> modify (t_n:)
     _ -> return ()
   where
     ys = Set.fromList $ map Text.pack xs
@@ -130,8 +131,6 @@ instance ( Pretty e
     RenameError e a -> pretty e <> char ':' <+> pretty a
     UnifyError a -> pretty a
 
-mapEE :: ( ComonadEnv a w
-         , MonadCatch (w b) m n
-         , MonadError e n
-         ) => (a -> b -> e) -> m c -> n c
+mapEE :: (ComonadEnv a w, MonadCatch (w b) m n, MonadError e n)
+      => (a -> b -> e) -> m c -> n c
 mapEE f = mapE (f <$> ask <*> extract)

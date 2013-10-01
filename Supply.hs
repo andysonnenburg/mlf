@@ -50,6 +50,9 @@ instance Monad m => Monad (SupplyT s m) where
   return = SupplyT . return
   m >>= k = SupplyT $ unSupplyT m >>= unSupplyT . k
 
+instance MonadFix m => MonadFix (SupplyT s m) where
+  mfix f = SupplyT $ mfix $ unSupplyT . f
+
 instance MonadTrans (SupplyT s) where
   lift = SupplyT . lift
 

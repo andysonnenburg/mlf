@@ -43,7 +43,7 @@ import Prelude hiding (lex)
 %%
 
 polyType
-  : monoType { Mono $1 <% $1 }
+  : monoType { Mono (extract $1) <% $1 }
   | '_|_' { Bot <% $1 }
   | '(' var '<>' polyType ')' polyType {
       Forall (extract $2) (extract $3) $4 $6 <% $1 <@ $2 <@ $3 <@ $4 <@ $5 <@ $6

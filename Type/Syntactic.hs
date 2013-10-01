@@ -57,7 +57,7 @@ instance FunctorHoist MonoType where
     Arr a b -> Arr (f $ rec <$> a) (f $ rec <$> b)
 
 data PolyType w a
-  = Mono (w (MonoType w a))
+  = Mono (MonoType w a)
   | Bot
   | Forall a BindingFlag (w (PolyType w a)) (w (PolyType w a))
   deriving (Functor, Foldable, Traversable)
@@ -99,6 +99,6 @@ instance ( ComonadEnv ScopedEffect w
 
 instance FunctorHoist PolyType where
   hoist f = fix $ \ rec -> \ case
-    Mono t -> Mono $ f $ hoist f <$> t
+    Mono t -> Mono $ hoist f t
     Bot -> Bot
     Forall a bf o o' -> Forall a bf (f $ rec <$> o) (f $ rec <$> o')
