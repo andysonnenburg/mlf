@@ -4,9 +4,9 @@ module Name
        , supplyName
        ) where
 
-import Data.Functor
+import Control.Applicative
+
 import Data.Hashable (Hashable (hashWithSalt))
-import Data.Semigroup
 
 import System.Console.Terminfo.PrettyPrint
 
@@ -15,29 +15,23 @@ import Text.PrettyPrint.Free
 import Int
 import Supply
 
-data Name a = Name (Maybe a) {-# UNPACK #-} !Int deriving Show
+data Name a = Name {-# UNPACK #-} !Int (Maybe a) deriving Show
 
 instance Eq (Name a) where
-  Name _ x == Name _ y = x == y
-  Name _ x /= Name _ y = x /= y
-
-instance Semigroup (Name a) where
-  n@(Name (Just _) _) <> _ = n
-  Name Nothing x <> Name a _ = Name a x
+  Name x _ == Name y _ = x == y
+  Name x _ /= Name y _ = x /= y
 
 instance Hashable (Name a) where
-  hashWithSalt x (Name _ y) = hashWithSalt x y
+  hashWithSalt x = hashWithSalt x . toInt
 
 instance IsInt (Name a) where
-  toInt (Name _ x) = x
+  toInt (Name x _) = x
 
 instance Pretty a => Pretty (Name a) where
-  pretty (Name x y) = maybe (char '$' <> pretty y) pretty x
+  pretty (Name x y) = maybe (char '$' <> pretty x) pretty y
 
 instance PrettyTerm a => PrettyTerm (Name a) where
-  prettyTerm = \ case
-    Name Nothing x -> char '$' <> prettyTerm x
-    Name (Just a) _ -> prettyTerm a
+  prettyTerm (Name x y) = maybe (char '$' <> prettyTerm x) prettyTerm y
 
 supplyName :: MonadSupply Int m => m (Name a)
-supplyName = Name Nothing <$> supply
+supplyName = Name <$> supply <*> pure Nothing

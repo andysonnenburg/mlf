@@ -3,6 +3,7 @@ module UnionFind
        ( Set
        , new
        , union
+       , unionWith
        , find
        , write
        , Ref
@@ -16,7 +17,6 @@ import Control.Monad.ST.Safe
 
 import Data.Function (fix)
 import Data.STRef
-import Data.Semigroup
 
 import Prelude hiding (elem, read)
 
@@ -38,22 +38,26 @@ new =
   liftA2 Repr (newSTIntRef minBound) <<<
   newSTRef
 
-union :: (Semigroup a, MonadST m) => Set (World m) a -> Set (World m) a -> m ()
-union x y = liftST $ do
+union :: MonadST m => Set (World m) a -> Set (World m) a -> m ()
+{-# INLINE union #-}
+union = unionWith const
+
+unionWith :: MonadST m => (a -> a -> a) -> Set (World m) a -> Set (World m) a -> m ()
+unionWith f x y = liftST $ do
   Three xRank xRef x' <- find' x
   Three yRank yRef y' <- find' y
-  when (x' /= y') $
+  when (xRef /= yRef) $
     compare <$> readSTIntRef xRank <*> readSTIntRef yRank >>= \ case
       LT -> do
         writeSTRef x' $ Link y'
-        writeSTRef yRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
+        writeSTRef yRef =<< f <$> readSTRef xRef <*> readSTRef yRef
       EQ -> do
         modifySTIntRef xRank (+ 1)
         writeSTRef y' $ Link x'
-        writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
+        writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
       GT -> do
         writeSTRef y' $ Link x'
-        writeSTRef xRef =<< (<>) <$> readSTRef xRef <*> readSTRef yRef
+        writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
 
 find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
 find =
@@ -65,11 +69,13 @@ find =
       writeSTRef set $ Link set''
       return two) . unSet
 
-write :: MonadST m => Set (World m) a -> a -> m ()
+write :: MonadST m => Ref (World m) a -> a -> m ()
 {-# INLINE write #-}
-write set a = liftST $ do
-  ref <- find set
-  writeSTRef (unRef ref) a
+write ref = liftST . writeSTRef (unRef ref)
+
+read :: MonadST m => Ref (World m) a -> m a
+{-# INLINE read #-}
+read = liftST . readSTRef . unRef
 
 find' :: Set s a -> ST s (Three s a)
 find' = fix (\ rec set -> readSTRef set >>= \ case
@@ -78,10 +84,6 @@ find' = fix (\ rec set -> readSTRef set >>= \ case
     three@(Three _ _ set'') <- rec set'
     writeSTRef set $ Link set''
     return three) . unSet
-
-read :: MonadST m => Ref (World m) a -> m a
-{-# INLINE read #-}
-read = liftST . readSTRef . unRef
 
 data Two s a =
   Two

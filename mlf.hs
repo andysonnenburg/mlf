@@ -8,12 +8,14 @@
 module Main (main) where
 
 import Control.Applicative
+import Control.Category ((>>>))
 import Control.Comonad.Env (ComonadEnv, ask, extract)
 import Control.Monad.Error (MonadError)
 import Control.Monad.ST.Safe
 import Control.Monad.State.Strict
 
 import Data.ByteString.UTF8 as ByteString
+import Data.Foldable (foldlM)
 import qualified Data.HashSet as Set
 import Data.IntMap.Strict ((!))
 import Data.Monoid (mempty)
@@ -34,7 +36,6 @@ import Catch
 import Function
 import Hoist
 import IntMap (toIntMap)
-import Name
 import Parse
 import Parser
 import Product (local)
@@ -43,7 +44,7 @@ import ST
 import qualified Stream
 import Sum
 import Supply
-import Type.Graphic (Node (Node), NodeSet, forNodeSet_)
+import Type.Graphic (Bound (Bound), preorder, project)
 import qualified Type.Graphic as Graphic
 import Type.Permission (getPermissions)
 import qualified Type.Permission as Permission
@@ -97,7 +98,7 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
        runST $ flip runSupplyT (Stream.enumFrom 0) $ runSumT $ do
          t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
          t_g <- Graphic.fromRestricted t_r
-         ts <- getNodeSets t_g names
+         ts <- getTypes names t_g
          mapE UnifyError (unify t_g ts)
          Graphic.toSyntactic t_g
     |> \ case
@@ -109,12 +110,14 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
         putDoc $ pretty a
         putStrLn ""
 
-getNodeSets :: (MonadST m, s ~ World m)
-            => NodeSet s Text -> [String] -> m [NodeSet s Text]
-getNodeSets t_n0 xs = flip execStateT mempty $ forNodeSet_ t_n0 $ \ t_n ->
-  find t_n >>= read >>= \ case
-    Node (Name (Just y) _) _ _ | Set.member y ys -> modify (t_n:)
-    _ -> return ()
+getTypes :: (MonadST m, s ~ World m)
+         => [String]
+         -> Graphic.Type s (Maybe Text)
+         -> m [Graphic.Type s (Maybe Text)]
+getTypes xs = find >=> read >=> preorder >=> foldlM (\ ts t ->
+  find t >>= read |> fmap $ project >>> \ case
+    Bound (Just y) _ _ | Set.member y ys -> t:ts
+    _ -> ts) mempty
   where
     ys = Set.fromList $ map Text.pack xs
 

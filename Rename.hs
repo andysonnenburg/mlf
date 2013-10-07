@@ -36,7 +36,7 @@ rename = flip runReaderT mempty . renamePoly
       Mono t -> Mono . extract <$> renameMono (t <$ w)
       Bot -> return Bot
       Forall x bf a b -> do
-        x' <- Name (Just x) <$> supply
+        x' <- Name <$> supply <*> pure (Just x)
         Forall x' bf <$> rec a <*> local (Map.insert x x') (rec b)
     renameMono = fix $ \ rec w -> for w $ \ case
       Var x -> asks (Map.lookup x) >>= \ case

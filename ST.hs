@@ -17,6 +17,10 @@ instance MonadST (ST s) where
   type World (ST s) = s
   liftST = id
 
+instance MonadST IO where
+  type World IO = RealWorld
+  liftST = stToIO
+
 instance MonadST m => MonadST (ReaderT r m) where
   type World (ReaderT r m) = World m
 

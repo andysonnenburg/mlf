@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, TupleSections, ViewPatterns #-}
+{-# LANGUAGE LambdaCase, TupleSections, TypeFamilies #-}
 module Type.Permission
        ( Permission (..)
        , unlessGreen
@@ -9,8 +9,10 @@ module Type.Permission
        ) where
 
 import Control.Applicative
+import Control.Category ((<<<), (>>>))
 import Control.Monad.State.Strict
 
+import Data.Foldable (foldlM, traverse_)
 import Data.Semigroup
 
 import System.Console.Terminfo.Color (Color (ColorNumber))
@@ -20,12 +22,11 @@ import System.Console.Terminfo.PrettyPrint
 import Prelude hiding (read)
 
 import Applicative
+import Function ((|>))
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
 import ST
 import Type.Graphic
-import qualified Type.Graphic.Postorder as Postorder
-import qualified Type.Graphic.Preorder as Preorder
 import UnionFind
 
 data Permission = M | I | G | O | R deriving Show
@@ -49,7 +50,7 @@ toScopedEffect = soft . Foreground . \ case
 orange :: Color
 orange = ColorNumber 202
 
-type Permissions s a = IntMap (Node s a) Permission
+type Permissions s f = IntMap (Node s f) Permission
 
 data Down = Green | Orange | Red
 
@@ -74,34 +75,38 @@ fromUp x = \ case
   Inert -> I
   Polymorphic -> x
 
-getPermissions :: MonadST m => Type (World m) a -> m (Permissions (World m) a)
+getPermissions :: (MonadST m, s ~ World m)
+               => Type s a -> m (Permissions s (Bound s a))
 getPermissions t = do
-  downs <- flip execStateT mempty $ Preorder.for_ t $ \ n@(Node _ b _) ->
-    case b of
-      Root -> modify $ Map.insert n Green
-      Binder bf t' -> do
-        n' <- read =<< find t'
-        modify . Map.insert n =<< (bf,) <$> gets (!n') <$$> \ case
+  n0 <- read =<< find t
+  downs <- foldlM (\ downs -> find >=> read >=> \ n ->
+    project n |> boundBinding >>> find >=> read >=> \ case
+      Root -> return $ Map.insert n Green downs
+      Binder bf s' -> find s' >>= read |> fmap $
+        flip (Map.insert n) downs <<< (downs!) >>> (bf,) >>> \ case
           (Flexible, Green) -> Green
           (Rigid, _) -> Orange
-          (Flexible, _) -> Red
-  ups <- flip execStateT mempty $ Postorder.for_ t $ \ n@(Node _ b c) -> do
+          (Flexible, _) -> Red) mempty =<< (t:) <$> preorder n0
+  ups <- flip execStateT mempty $ traverse_ (find >=> read >=> \ n -> do
     modify $ Map.alter (\ case
-      _ | poly c -> Just Polymorphic
+      _ | poly $ boundTerm $ project n -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just up -> Just up) n
-    case b of
+    project n |> boundBinding >>> find >=> read >=> \ case
       Root -> return ()
-      Binder bf t' -> do
-        n' <- read =<< find t'
+      Binder bf s' -> do
+        n' <- read =<< find s'
         modify . Map.insertWith (<>) n' =<< (bf,) <$> gets (!n) <$$> \ case
           (_, Inert) -> Inert
           (_, Monomorphic) -> Monomorphic
           (Rigid, _) -> Inert
-          _ -> Polymorphic
+          _ -> Polymorphic) =<< (++ [t]) <$> postorder n0
   return $ Map.intersectionWith (fromUp . fromDown) downs ups
+  where
+    boundTerm (Bound _ _ x) = x
+    boundBinding (Bound _ x _) = x
 
-poly :: Term s a -> Bool
+poly :: Term a -> Bool
 poly = \ case
   Bot -> True
   _ -> False

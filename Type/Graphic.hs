@@ -1,35 +1,35 @@
 {-# LANGUAGE
-    FlexibleContexts
+    DeriveFoldable
+  , DeriveFunctor
+  , DeriveTraversable
+  , FlexibleContexts
   , LambdaCase
   , TypeFamilies
   , ViewPatterns #-}
 module Type.Graphic
-       ( Type
-       , NodeSet
-       , Node (..)
+       ( module Type.Node
+       , Type
+       , Bound (..)
        , Term (..)
        , Binding (..)
-       , bindingFlag
        , BindingFlag (..)
        , fromRestricted
        , toSyntactic
-       , foldMapNode
-       , forNode_
-       , forNodeSet_
        ) where
 
-import Control.Category ((<<<))
 import Control.Applicative
+import Control.Category ((<<<), (>>>))
 import Control.Monad.Reader
-import Control.Monad.State.Strict
 
-import Data.Hashable (Hashable (hashWithSalt))
-import qualified Data.IntSet as Set
+import Data.Foldable (Foldable (foldMap), foldlM)
 import Data.Maybe (fromMaybe)
-import Data.Semigroup (Monoid (..), Semigroup ((<>)))
+import Data.Monoid (Monoid (mappend, mempty))
+import Data.Traversable
 
 import Prelude hiding (read)
 
+import Applicative ((<$$>))
+import Function ((|>))
 import Int
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
@@ -38,144 +38,102 @@ import Product (Product (..))
 import ST
 import Supply
 import Type.BindingFlag
+import Type.Node
 import qualified Type.Restricted as R
 import qualified Type.Syntactic as S
 import UnionFind
 
-type Type s a = NodeSet s a
+type Type s a = Set s (Node s (Bound s a))
 
-type NodeSet s a = Set s (Node s a)
+data Bound s a b = Bound a {-# UNPACK #-} !(Set s (Binding b)) !(Term b)
 
-data Node s a = Node (Name a) (Binding s a) (Term s a)
+instance Foldable (Bound s a) where
+  foldMap f (Bound _ _ t) = foldMap f t
 
-instance Eq (Node s a) where
-  Node a _ _ == Node b _ _ = a == b
-  Node a _ _ /= Node b _ _ = a /= b
-
-instance Semigroup (Node s a) where
-  Node a b c <> Node a' b' c' = Node (a <> a') (b <> b') (c <> c')
-
-instance Hashable (Node s a) where
-  hashWithSalt x = hashWithSalt x . toInt
-
-instance IsInt (Node s a) where
-  toInt (Node a _ _) = toInt a
-
-data Binding s a
+data Binding a
   = Root
-  | Binder BindingFlag (NodeSet s a)
+  | Binder !BindingFlag a deriving ( Show
+                                   , Functor
+                                   , Foldable
+                                   , Traversable
+                                   )
 
-instance Semigroup (Binding s a) where
-  Root <> a = a
-  a <> _ = a
-
-instance Monoid (Binding s a) where
+instance Monoid (Binding a) where
   mempty = Root
-  mappend = (<>)
+  mappend x Root = x
+  mappend _ x = x
 
-data Term s a
+data Term a
   = Bot
-  | Arr (NodeSet s a) (NodeSet s a)
+  | Arr a a deriving ( Show
+                     , Functor
+                     , Foldable
+                     , Traversable
+                     )
 
-instance Semigroup (Term s a) where
-  Bot <> a = a
-  a <> _ = a
-
-fromRestricted :: ( MonadST m
-                  , MonadSupply Int m
-                  ) => R.Type (Name a) -> m (Type (World m) a)
+fromRestricted :: (MonadST m, MonadSupply Int m)
+               => R.Type (Name a) -> m (Type (World m) (Maybe a))
 fromRestricted =
   flip runReaderT mempty <<<
   fix (\ rec name binding -> \ case
-    R.Bot -> newNodeSet name binding Bot
+    R.Bot -> newBoundNodeSet name binding Bot
     R.Var x -> asks (!x)
     R.Arr a b -> do
       p <- ask
-      newNodeSet name binding $ Arr (p!a) (p!b)
-    R.Forall x'@(Name name' _) bf o o' -> do
-      n_a <- newNodeSet Nothing Root Bot
+      newBoundNodeSet name binding $ Arr (p!a) (p!b)
+    R.Forall x'@(Name _ name') bf o o' -> do
+      n_a <- newBoundNodeSet Nothing Root Bot
       t' <- local (Map.insert x' n_a) $ rec name binding o'
-      sameNodeSet t' n_a >>= \ case
+      same t' n_a >>= \ case
         True -> rec name' binding o
         False -> do
           t <- rec name' (Binder bf t') o
           union t n_a
           return t') Nothing Root
   where
-    newNodeSet a b c = new =<< newNode a b c
-    newNode a b c = Node <$> (Name a <$> supply) <*> pure b <*> pure c
-    sameNodeSet t_a t_b = do
-      r_a <- find t_a
-      r_b <- find t_b
+    newBoundNodeSet a b c = new =<< newBoundNode a b c
+    newBoundNode a b c = Bound a <$> new b <*> pure c >>= newNode
+    same s_a s_b = do
+      r_a <- find s_a
+      r_b <- find s_b
       if r_a == r_b
         then return True
         else do
-        n_a <- read r_a
-        n_b <- read r_b
-        return $ n_a == n_b
+        a <- read r_a
+        b <- read r_b
+        return $ a == b
 
 toSyntactic :: MonadST m =>
-               Type (World m) a ->
+               Type (World m) (Maybe a) ->
                m (Product Int (S.PolyType (Product Int) (Name a)))
 toSyntactic t0 = do
   boundNodes <- getBoundNodes t0
-  fix (\ rec n0@(Node (toInt -> x0) _ c) -> do
-    t_s0 <- case c of
-      Bot -> return $ x0 :* S.Bot
+  fix (\ rec n0 -> do
+    t_s0 <- case boundTerm $ project n0 of
+      Bot -> return $ toInt n0 :* S.Bot
       Arr t_a t_b -> do
-        Node x_a _ _ <- read =<< find t_a
-        Node x_b _ _ <- read =<< find t_b
-        return $ x0 :* S.Mono (S.Arr (toInt x_a :* S.Var x_a) (toInt x_b :* S.Var x_b))
-    foldM (\ t_s n@(Node a@(toInt -> x) b _) -> do
-      t_s' <- rec n
-      return $ x :* S.Forall a (bindingFlag b) t_s' t_s)
+        n_a <- read =<< find t_a
+        n_b <- read =<< find t_b
+        return $ toInt n0 :* S.Mono (S.Arr (nodeVar n_a) (nodeVar n_b))
+    foldM (\ t_s (bf, n) -> nodeForall n bf <$> rec n <*> pure t_s)
       t_s0 (fromMaybe mempty $ Map.lookup n0 boundNodes)) =<< read =<< find t0
+  where
+    nodeVar n = toInt n :* S.Var (nodeName n)
+    nodeForall n bf o o' = toInt n :* S.Forall (nodeName n) bf o o'
+    nodeName n = Name (toInt n) a where
+      Bound a _ _ = project n
+    boundTerm (Bound _ _ x) = x
 
-bindingFlag :: Binding s a -> BindingFlag
-bindingFlag (Binder bf _) = bf
-bindingFlag Root = error "bindingFlag: Root"
+type BoundNode s a = Node s (Bound s a)
 
 getBoundNodes :: (MonadST m, s ~ World m)
-              => Type s a -> m (IntMap (Node s a) [Node s a])
-getBoundNodes t0 = flip execStateT mempty $ forNode_ t0 $ \ n@(Node _ b _) ->
-  case b of
-    Root -> return ()
-    Binder _ t' -> do
-      n' <- read =<< find t'
-      modify $ Map.alter (Just . maybe [n] (n:)) n'
-
-foldMapNode :: ( MonadST m
-               , s ~ World m
-               , Monoid b
-               ) => NodeSet s a -> (Node s a -> b) -> m b
-foldMapNode t0 f = flip evalStateT mempty $ fix (\ rec t -> do
-  n@(Node (toInt -> x) _ c) <- read =<< find t
-  xs <- get
-  if Set.notMember x xs
-    then do
-    modify $ Set.insert x
-    case c of
-      Bot -> return $ f n
-      Arr a b -> do
-        a' <- rec a
-        b' <- rec b
-        return $ a' `mappend` b' `mappend` f n
-    else return mempty) t0
-
-forNode_ :: ( MonadST m
-            , s ~ World m
-            ) => NodeSet s a -> (Node s a -> m b) -> m ()
-forNode_ t0 f = forNodeSet_ t0 $ f <=< read <=< find
-
-forNodeSet_ :: ( MonadST m
-               , s ~ World m
-               ) => NodeSet s a -> (NodeSet s a -> m b) -> m ()
-forNodeSet_ t0 f = flip evalStateT mempty $ fix (\ rec t -> do
-  Node (toInt -> x) _ c <- read =<< find t
-  xs <- get
-  when (Set.notMember x xs) $ do
-    modify $ Set.insert x
-    case c of
-      Bot -> return ()
-      Arr a b -> rec a >> rec b
-    void $ lift $ f t) t0
+              => Type s a
+              -> m (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
+getBoundNodes = find >=> read >=> preorder >=> foldlM (\ ns' ->
+  find >=> read >=> \ n -> project n |> boundBinding >>> find >=> read >=> \ case
+    Root -> return ns'
+    Binder bf s' -> (find s' >>= read) <$$> \ n' -> Map.alter (\ case
+      Nothing -> Just [(bf, n)]
+      Just ns -> Just ((bf, n):ns)) n' ns') mempty
+  where
+    boundBinding (Bound _ x _) = x

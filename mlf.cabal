@@ -39,8 +39,7 @@ executable mlf
     Token,
     Type.BindingFlag,
     Type.Graphic,
-    Type.Graphic.Postorder,
-    Type.Graphic.Preorder,
+    Type.Node
     Type.Permission,
     Type.Syntactic,
     Type.Restricted,
@@ -54,6 +53,7 @@ executable mlf
     comonad,
     comonads-fd,
     containers,
+    free,
     hashable,
     unordered-containers,
     mtl,
