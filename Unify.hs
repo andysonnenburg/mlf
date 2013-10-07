@@ -17,7 +17,7 @@ import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 
-import Data.Foldable (Foldable, fold, foldl', foldlM, for_, toList, traverse_)
+import Data.Foldable (Foldable, foldl', foldlM, foldMap, for_, toList, traverse_)
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>), mempty)
 
@@ -145,14 +145,17 @@ rebind t0 bs m b2 = void $ foldlM (\ s t -> do
           mempty $ fromMaybe mempty $ Map.lookup n m
   let b2_n = flip lookupMany s . maybe mempty toList $ Map.lookup n b2
       p = lca' (b1_n <> b2_n)
-      b' = case (fold $ flip lookupMany bs $ toList $ m!n, Path.uncons p) of
-        (Binder bf _, Just (_, n', _)) -> Binder bf n'
-        (Root, _) -> Root
-        (_, Nothing) -> Root
+      bf = foldMap bindingFlag $ flip lookupMany bs $ toList $ m!n
+      b' = case Path.uncons p of
+        Just (_, n', _) -> Binder bf n'
+        Nothing -> Root
   join $ write <$> find (boundBinding $ project n) <*> pure b'
   return $ Map.insert n (Path.cons (toInt n) t p) s) mempty =<< preorder' t0
   where
     lca' = list Path.empty (foldl' lca)
+    bindingFlag = \ case
+      Root -> Flexible
+      Binder bf _ -> bf
     lookupMany ks xs = foldr (\ k b -> maybe b (:b) $ Map.lookup k xs) [] ks
     list nil cons = \ case
       [] -> nil

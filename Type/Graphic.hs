@@ -23,7 +23,7 @@ import Control.Monad.Reader
 
 import Data.Foldable (Foldable (foldMap), foldlM)
 import Data.Maybe (fromMaybe)
-import Data.Monoid (Monoid (mappend, mempty))
+import Data.Monoid (mempty)
 import Data.Traversable
 
 import Prelude hiding (read)
@@ -57,11 +57,6 @@ data Binding a
                                    , Foldable
                                    , Traversable
                                    )
-
-instance Monoid (Binding a) where
-  mempty = Root
-  mappend x Root = x
-  mappend _ x = x
 
 data Term a
   = Bot
