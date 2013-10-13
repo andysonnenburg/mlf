@@ -1,6 +1,9 @@
 {-# LANGUAGE
-    FlexibleContexts
+    DeriveGeneric
+  , FlexibleContexts
+  , FlexibleInstances
   , LambdaCase
+  , MultiParamTypeClasses
   , StandaloneDeriving
   , TypeFamilies
   , UndecidableInstances #-}
@@ -21,15 +24,21 @@ import Data.Hashable (Hashable (hashWithSalt))
 import qualified Data.IntSet as Set
 import Data.Monoid (mempty)
 
+import GHC.Generics
+
 import Prelude hiding (read)
 
 import Int
+import Lens
 import ST
 import Supply
 import UnionFind
 
-data Node s f = Node {-# UNPACK #-} !Int (f (Set s (Node s f)))
+data Node s f = Node {-# UNPACK #-} !Int (f (Set s (Node s f))) deriving Generic
 deriving instance Show (f (Set s (Node s f))) => Show (Node s f)
+
+instance Field1 (Node s f) (Node s f) Int Int
+instance Field2 (Node s f) (Node s f) (f (Set s (Node s f))) (f (Set s (Node s f)))
 
 instance Eq (Node s f) where
   Node x _ == Node y _ = x == y

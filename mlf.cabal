@@ -15,6 +15,7 @@ executable mlf
   main-is: mlf.hs      
   other-modules:
     Applicative,
+    Arrow,
     Catch,
     Function,
     Hoist,
@@ -23,7 +24,9 @@ executable mlf
     IntMap,
     IntSet,
     Lex,
+    List,
     Loc,
+    Loop,
     Monad,
     Name,
     Parse,
@@ -43,7 +46,7 @@ executable mlf
     Type.Permission,
     Type.Syntactic,
     Type.Restricted,
-    Unify,
+    Type.Unify,
     UnionFind
   build-depends:
     base == 4.6.*,
@@ -65,5 +68,11 @@ executable mlf
     wl-pprint-extras,
     terminfo,
     wl-pprint-terminfo
-  ghc-options: -Wall -O2
+  ghc-options:
+    -Wall
+    -fwarn-tabs
+    -fwarn-incomplete-uni-patterns
+    -fwarn-incomplete-record-updates
+    -fwarn-monomorphism-restriction
+    -O2
   build-tools: alex, happy

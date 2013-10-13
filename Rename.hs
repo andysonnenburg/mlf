@@ -22,14 +22,9 @@ data RenameError a = NotFound a deriving Show
 instance Pretty a => Pretty (RenameError a) where
   pretty (NotFound a) = pretty a <+> text "not" <+> text "found"
 
-rename :: ( Eq a
-          , Hashable a
-          , Traversable w
-          , ComonadEnv e w
-          , Applicative m
-          , MonadError (w (RenameError a)) m
-          , MonadSupply Int m
-          ) => w (PolyType w a) -> m (w (PolyType w (Name a)))
+rename :: (Eq a, Hashable a, Traversable w, ComonadEnv e w,
+           MonadError (w (RenameError a)) m, MonadSupply Int m)
+       => w (PolyType w a) -> m (w (PolyType w (Name a)))
 rename = flip runReaderT mempty . renamePoly
   where
     renamePoly = fix $ \ rec w -> for w $ \ case

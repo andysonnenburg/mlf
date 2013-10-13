@@ -3,7 +3,7 @@ module Type.BindingFlag (BindingFlag (..)) where
 
 import Data.Semigroup
 
-import Text.PrettyPrint.Free
+import Text.PrettyPrint.Free (Pretty (pretty), char)
 
 data BindingFlag = Flexible | Rigid deriving (Show, Eq)
 

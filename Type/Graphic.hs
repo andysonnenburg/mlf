@@ -1,14 +1,18 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
+  , DeriveGeneric
   , DeriveTraversable
   , FlexibleContexts
+  , FlexibleInstances
   , LambdaCase
+  , MultiParamTypeClasses
   , TypeFamilies
   , ViewPatterns #-}
 module Type.Graphic
        ( module Type.Node
        , Type
+       , BoundNode
        , Bound (..)
        , Term (..)
        , Binding (..)
@@ -26,6 +30,8 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (mempty)
 import Data.Traversable
 
+import GHC.Generics (Generic)
+
 import Prelude hiding (read)
 
 import Applicative ((<$$>))
@@ -33,6 +39,7 @@ import Function ((|>))
 import Int
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
+import Lens
 import Name
 import Product (Product (..))
 import ST
@@ -43,9 +50,16 @@ import qualified Type.Restricted as R
 import qualified Type.Syntactic as S
 import UnionFind
 
-type Type s a = Set s (Node s (Bound s a))
+type Type s a = Set s (BoundNode s a)
 
-data Bound s a b = Bound a {-# UNPACK #-} !(Set s (Binding b)) !(Term b)
+type BoundNode s a = Node s (Bound s a)
+
+data Bound s a b =
+  Bound a {-# UNPACK #-} !(Set s (Binding b)) !(Term b) deriving Generic
+
+instance Field1 (Bound s a b) (Bound s a' b) a a'
+instance Field2 (Bound s a b) (Bound s a b) (Set s (Binding b)) (Set s (Binding b))
+instance Field3 (Bound s a b) (Bound s a b) (Term b) (Term b)
 
 instance Foldable (Bound s a) where
   foldMap f (Bound _ _ t) = foldMap f t
@@ -104,7 +118,7 @@ toSyntactic :: MonadST m =>
 toSyntactic t0 = do
   boundNodes <- getBoundNodes t0
   fix (\ rec n0 -> do
-    t_s0 <- case boundTerm $ project n0 of
+    t_s0 <- case lget _3 $ project n0 of
       Bot -> return $ toInt n0 :* S.Bot
       Arr t_a t_b -> do
         n_a <- read =<< find t_a
@@ -117,18 +131,13 @@ toSyntactic t0 = do
     nodeForall n bf o o' = toInt n :* S.Forall (nodeName n) bf o o'
     nodeName n = Name (toInt n) a where
       Bound a _ _ = project n
-    boundTerm (Bound _ _ x) = x
-
-type BoundNode s a = Node s (Bound s a)
 
 getBoundNodes :: (MonadST m, s ~ World m)
               => Type s a
               -> m (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
 getBoundNodes = find >=> read >=> preorder >=> foldlM (\ ns' ->
-  find >=> read >=> \ n -> project n |> boundBinding >>> find >=> read >=> \ case
+  find >=> read >=> \ n -> project n |> lget _2 >>> find >=> read >=> \ case
     Root -> return ns'
     Binder bf s' -> (find s' >>= read) <$$> \ n' -> Map.alter (\ case
       Nothing -> Just [(bf, n)]
       Just ns -> Just ((bf, n):ns)) n' ns') mempty
-  where
-    boundBinding (Bound _ x _) = x

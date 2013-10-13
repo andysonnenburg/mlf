@@ -49,7 +49,7 @@ import qualified Type.Graphic as Graphic
 import Type.Permission (getPermissions)
 import qualified Type.Permission as Permission
 import qualified Type.Restricted as Restricted
-import Unify
+import Type.Unify
 import UnionFind
 
 data MLF

@@ -25,6 +25,7 @@ import Applicative
 import Function ((|>))
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
+import Lens
 import ST
 import Type.Graphic
 import UnionFind
@@ -80,7 +81,7 @@ getPermissions :: (MonadST m, s ~ World m)
 getPermissions t = do
   n0 <- read =<< find t
   downs <- foldlM (\ downs -> find >=> read >=> \ n ->
-    project n |> boundBinding >>> find >=> read >=> \ case
+    project n |> lget _2 >>> find >=> read >=> \ case
       Root -> return $ Map.insert n Green downs
       Binder bf s' -> find s' >>= read |> fmap $
         flip (Map.insert n) downs <<< (downs!) >>> (bf,) >>> \ case
@@ -89,10 +90,10 @@ getPermissions t = do
           (Flexible, _) -> Red) mempty =<< (t:) <$> preorder n0
   ups <- flip execStateT mempty $ traverse_ (find >=> read >=> \ n -> do
     modify $ Map.alter (\ case
-      _ | poly $ boundTerm $ project n -> Just Polymorphic
+      _ | poly $ lget _3 $ project n -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just up -> Just up) n
-    project n |> boundBinding >>> find >=> read >=> \ case
+    project n |> lget _2 >>> find >=> read >=> \ case
       Root -> return ()
       Binder bf s' -> do
         n' <- read =<< find s'
@@ -102,9 +103,6 @@ getPermissions t = do
           (Rigid, _) -> Inert
           _ -> Polymorphic) =<< (++ [t]) <$> postorder n0
   return $ Map.intersectionWith (fromUp . fromDown) downs ups
-  where
-    boundTerm (Bound _ _ x) = x
-    boundBinding (Bound _ x _) = x
 
 poly :: Term a -> Bool
 poly = \ case

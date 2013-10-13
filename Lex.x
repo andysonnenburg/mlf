@@ -1,7 +1,7 @@
 {
 {-# LANGUAGE NamedFieldPuns, RecordWildCards #-}
 {-# OPTIONS_GHC
-    -fno-warn-lazy-unlifted-bindings
+    -fno-warn-tabs
     -fno-warn-missing-signatures
     -fno-warn-unused-binds
     -fno-warn-unused-imports

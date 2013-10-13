@@ -3,9 +3,8 @@
   , LambdaCase
   , RecordWildCards
   , TupleSections
-  , TypeFamilies
-  , ViewPatterns #-}
-module Unify
+  , TypeFamilies #-}
+module Type.Unify
        ( UnifyError (..)
        , unify
        ) where
@@ -26,6 +25,7 @@ import Text.PrettyPrint.Free (Pretty (pretty), (<+>), text)
 import Prelude hiding (read)
 
 import Applicative ((<$$>))
+import Function ((|>))
 import Hoist
 import Id
 import Int
@@ -33,6 +33,8 @@ import IntMap (IntMap, (!))
 import qualified IntMap as Map
 import IntSet (IntSet)
 import qualified IntSet as Set
+import Lens
+import List (list)
 import Monad
 import Name
 import Path (lca)
@@ -63,27 +65,39 @@ unify :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
 unify t ts = do
   t_s <- extract' <$> toSyntactic t
   bs <- foldlM (\ bs -> find >=> read >=> \ n -> do
-          b <- read <=< find <<< boundBinding $ project n
-          return $ Map.insert n b bs) mempty =<< preorder' t
-  p <- getPermissions t
+    b <- read <=< find <<< lget _2 $ project n
+    return $ Map.insert n b bs)
+    mempty =<< preorder' t
+  ancestors <- foldlM (\ ancestors -> find >=> read >=> \ n ->
+    project n |> lget _2 >>> find >=> read >=> \ case
+      Root -> return $ Map.insert n mempty ancestors
+      Binder _ s' -> do
+        n' <- read =<< find s'
+        return $ Map.insert n (Set.insert n' $ ancestors!n') ancestors)
+    mempty =<< preorder' t
+  ps <- getPermissions t
   S {..} <- execStateT (traversePairs_ unify' ts) emptyS
   rebind t bs merged =<< getPartiallyGrafted t grafted
   whenCyclic t $ cyclic t
-  for_ graftedBots $ \ n -> unlessGreen (p!n) $ t_s `doesNotSubsume` t
+  for_ graftedBots $ \ n -> unlessGreen (ps!n) $ t_s `doesNotSubsume` t
   preorder' t >>= traverse_ (find >=> read >=> \ n -> do
-    b' <- read <=< find <<< boundBinding $ project n
-    whenRed (p!n) $ case (bs!n, b') of
-      (Root, Root) -> return ()
-      (Binder bf t_b, Binder bf' t_b')
-        | bf == bf' -> whenM (notSame t_b t_b') $ t_s `doesNotSubsume` t
-      _ -> t_s `doesNotSubsume` t)
+    b' <- read <=< find <<< lget _2 $ project n
+    whenRed (ps!n) $ unlessM (sameBinding (bs!n) b') $ t_s `doesNotSubsume` t)
   where
-    notSame t_a t_b = do
+    sameBinding = curry $ \ case
+      (Root, Root) -> return True
+      (Binder bf t_b, Binder bf' t_b')
+        | bf == bf' -> same t_b t_b'
+      _ -> return False
+    same t_a t_b = do
       r_a <- find t_a
       r_b <- find t_b
-      if r_a /= r_b
+      if r_a == r_b
         then return True
-        else (/=) <$> read r_a <*> read r_b
+        else (==) <$> read r_a <*> read r_b
+    red = \ case
+      R -> True
+      _ -> False
 
 unify' :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
        => Type s (Maybe a)
@@ -97,8 +111,8 @@ unify' = fix $ \ rec x y -> do
     let b_x = project n_x
     n_y <- read r_y
     let b_y = project n_y
-    union (boundBinding b_x) (boundBinding b_y)
-    case (boundTerm b_x, boundTerm b_y) of
+    union (lget _2 b_x) (lget _2 b_y)
+    case (lget _3 b_x, lget _3 b_y) of
       (Bot, Bot) -> do
         n_y `mergedInto` n_x
         union x y
@@ -128,8 +142,6 @@ doesNotSubsume t_s t = do
   t_s' <- extract' <$> toSyntactic t
   throwError $ t_s `DoesNotSubsume` t_s'
 
-type BoundNode s a = Node s (Bound s a)
-
 rebind :: (MonadST m, s ~ World m)
        => Type s a
        -> IntMap (BoundNode s a) (Binding (Set s (BoundNode s a)))
@@ -149,17 +161,14 @@ rebind t0 bs m b2 = void $ foldlM (\ s t -> do
       b' = case Path.uncons p of
         Just (_, n', _) -> Binder bf n'
         Nothing -> Root
-  join $ write <$> find (boundBinding $ project n) <*> pure b'
+  join $ write <$> find (lget _2 $ project n) <*> pure b'
   return $ Map.insert n (Path.cons (toInt n) t p) s) mempty =<< preorder' t0
   where
     lca' = list Path.empty (foldl' lca)
     bindingFlag = \ case
       Root -> Flexible
       Binder bf _ -> bf
-    lookupMany ks xs = foldr (\ k b -> maybe b (:b) $ Map.lookup k xs) [] ks
-    list nil cons = \ case
-      [] -> nil
-      x:xs -> cons x xs
+    lookupMany ks xs = foldr (\ k b -> maybe b (:b) $ Map.lookup k xs) mempty ks
 
 getPartiallyGrafted :: (MonadST m, s ~ World m)
                     => Type (World m) a
@@ -169,7 +178,7 @@ getPartiallyGrafted t0 g =
   flip execStateT mempty $
   fix (\ rec t -> do
     n <- read =<< find t
-    let c = boundTerm $ project n
+    let c = lget _3 $ project n
     whenM (gets $ Map.notMember n) $
       if Set.member n g
       then do
@@ -189,12 +198,11 @@ getPartiallyGrafted t0 g =
       n <- read =<< find t
       walked <- gets $ Map.member n
       modify $ insertOne n n'
-      unless walked $
-        case boundTerm $ project n of
-          Bot -> return ()
-          Arr t_a t_b -> do
-            t_a `graftedUnder` n
-            t_b `graftedUnder` n
+      unless walked $ case lget _3 $ project n of
+        Bot -> return ()
+        Arr t_a t_b -> do
+          t_a `graftedUnder` n
+          t_b `graftedUnder` n
     insertOne k v = Map.alter (Just . \ case
       Nothing -> Set.singleton v
       Just vs -> Set.insert v vs) k
@@ -234,16 +242,10 @@ whenCyclic t0 m =
     n <- read =<< find t
     whenM (gets $ Set.notMember n) $ do
       whenM (asks $ Set.member n) $ lift $ lift m
-      case boundTerm $ project n of
+      case lget _3 $ project n of
         Bot -> return ()
         Arr t_a t_b -> local (Set.insert n) $ rec t_a >> rec t_b
       modify $ Set.insert n) t0
-
-boundBinding :: Bound s a b -> Set s (Binding b)
-boundBinding (Bound _ x _) = x
-
-boundTerm :: Bound s a b -> Term b
-boundTerm (Bound _ _ x) = x
 
 preorder' :: (MonadST m, s ~ World m, Foldable f)
           => Set s (Node s f) -> m [Set s (Node s f)]
