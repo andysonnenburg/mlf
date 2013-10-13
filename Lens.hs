@@ -27,6 +27,7 @@ module Lens
 import Control.Applicative
 
 import Data.Functor.Identity
+import Data.Proxy
 
 import GHC.Generics
 
@@ -161,9 +162,9 @@ instance GAt' (GSize s > n) n s s' t t' a b => GAt n (s :*: s') (t :*: t') a b w
   {-# INLINE gat #-}
   gat n = \ f ~s@(a :*: _) -> gat' (proxySizeGT a n) n f s
 
-proxySizeGT :: s x -> p n -> BoolP (GSize s > n)
+proxySizeGT :: s x -> p n -> Proxy (GSize s > n)
 {-# INLINE proxySizeGT #-}
-proxySizeGT _ _ = BoolP
+proxySizeGT _ _ = Proxy
 
 class GAt' (p :: Bool) (n :: Nat) s s' t t' a b where
   gat' :: f p -> g n -> Lens ((s :*: s') x) ((t :*: t') x) a b
@@ -176,15 +177,11 @@ instance GAt (Subtract (GSize s) n) s' t' a b => GAt' False n s s' s t' a b wher
   {-# INLINE gat' #-}
   gat' _ n = \ f (s :*: s') -> fmap (s :*:) $ gat (proxySubtractSize s n) f s'
 
-proxySubtractSize :: s x -> p n -> NatP (Subtract (GSize s) n)
+proxySubtractSize :: s x -> p n -> Proxy (Subtract (GSize s) n)
 {-# INLINE proxySubtractSize #-}
-proxySubtractSize _ _ = NatP
+proxySubtractSize _ _ = Proxy
 
 data Nat = Z | S Nat
-
-data NatP (n :: Nat) = NatP
-
-data BoolP (b :: Bool) = BoolP
 
 type N0 = Z
 type N1 = 'S N0
@@ -194,30 +191,30 @@ type N4 = 'S N3
 type N5 = 'S N4
 type N6 = 'S N5
 
-proxyN0 :: NatP N0
+proxyN0 :: Proxy N0
 {-# INLINE proxyN0 #-}
-proxyN0 = NatP
+proxyN0 = Proxy
 
-proxyN1 :: NatP N1
+proxyN1 :: Proxy N1
 {-# INLINE proxyN1 #-}
-proxyN1 = NatP
+proxyN1 = Proxy
 
-proxyN2 :: NatP N2
+proxyN2 :: Proxy N2
 {-# INLINE proxyN2 #-}
-proxyN2 = NatP
+proxyN2 = Proxy
 
-proxyN3 :: NatP N3
+proxyN3 :: Proxy N3
 {-# INLINE proxyN3 #-}
-proxyN3 = NatP
+proxyN3 = Proxy
 
-proxyN4 :: NatP N4
+proxyN4 :: Proxy N4
 {-# INLINE proxyN4 #-}
-proxyN4 = NatP
+proxyN4 = Proxy
 
-proxyN5 :: NatP N5
+proxyN5 :: Proxy N5
 {-# INLINE proxyN5 #-}
-proxyN5 = NatP
+proxyN5 = Proxy
 
-proxyN6 :: NatP N6
+proxyN6 :: Proxy N6
 {-# INLINE proxyN6 #-}
-proxyN6 = NatP
+proxyN6 = Proxy

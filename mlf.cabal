@@ -62,6 +62,7 @@ executable mlf
     mtl,
     semigroups,
     semigroupoids,
+    tagged,
     text,
     transformers,
     utf8-string,
