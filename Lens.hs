@@ -19,6 +19,10 @@ module Lens
        , Field1 (..)
        , Field2 (..)
        , Field3 (..)
+       , Field4 (..)
+       , Field5 (..)
+       , Field6 (..)
+       , Field7 (..)
        ) where
 
 import Control.Applicative
@@ -68,13 +72,75 @@ class Field3 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   {-# INLINE _3 #-}
   _3 f = fmap (to . gfromTuple) . at proxyN2 f . gtoTuple . from
 
+class Field4 s t a b | s -> a, t -> b, s b -> t, t a -> s where
+  _4 :: Lens s t a b
+  default _4 :: (Generic s, GTuple (Rep s),
+                 Generic t, GTuple (Rep t),
+                 At N3 (GList (Rep s)) (GList (Rep t)) a b)
+             => Lens s t a b
+  {-# INLINE _4 #-}
+  _4 f = fmap (to . gfromTuple) . at proxyN3 f . gtoTuple . from
+
+class Field5 s t a b | s -> a, t -> b, s b -> t, t a -> s where
+  _5 :: Lens s t a b
+  default _5 :: (Generic s, GTuple (Rep s),
+                 Generic t, GTuple (Rep t),
+                 At N4 (GList (Rep s)) (GList (Rep t)) a b)
+             => Lens s t a b
+  {-# INLINE _5 #-}
+  _5 f = fmap (to . gfromTuple) . at proxyN4 f . gtoTuple . from
+
+class Field6 s t a b | s -> a, t -> b, s b -> t, t a -> s where
+  _6 :: Lens s t a b
+  default _6 :: (Generic s, GTuple (Rep s),
+                 Generic t, GTuple (Rep t),
+                 At N5 (GList (Rep s)) (GList (Rep t)) a b)
+             => Lens s t a b
+  {-# INLINE _6 #-}
+  _6 f = fmap (to . gfromTuple) . at proxyN5 f . gtoTuple . from
+
+class Field7 s t a b | s -> a, t -> b, s b -> t, t a -> s where
+  _7 :: Lens s t a b
+  default _7 :: (Generic s, GTuple (Rep s),
+                 Generic t, GTuple (Rep t),
+                 At N6 (GList (Rep s)) (GList (Rep t)) a b)
+             => Lens s t a b
+  {-# INLINE _7 #-}
+  _7 f = fmap (to . gfromTuple) . at proxyN6 f . gtoTuple . from
+
 instance Field1 (a, b) (a', b) a a'
 instance Field1 (a, b, c) (a', b, c) a a'
+instance Field1 (a, b, c, d) (a', b, c, d) a a'
+instance Field1 (a, b, c, d, e) (a', b, c, d, e) a a'
+instance Field1 (a, b, c, d, e, f) (a', b, c, d, e, f) a a'
+instance Field1 (a, b, c, d, e, f, g) (a', b, c, d, e, f, g) a a'
 
-instance Field2 (c, a) (c, b) a b
-instance Field2 (c, a, d) (c, b, d) a b
+instance Field2 (a, b) (a, b') b b'
+instance Field2 (a, b, c) (a, b', c) b b'
+instance Field2 (a, b, c, d) (a, b', c, d) b b'
+instance Field2 (a, b, c, d, e) (a, b', c, d, e) b b'
+instance Field2 (a, b, c, d, e, f) (a, b', c, d, e, f) b b'
+instance Field2 (a, b, c, d, e, f, g) (a, b', c, d, e, f, g) b b'
 
-instance Field3 (c, d, a) (c, d, b) a b
+instance Field3 (a, b, c) (a, b, c') c c'
+instance Field3 (a, b, c, d) (a, b, c', d) c c'
+instance Field3 (a, b, c, d, e) (a, b, c', d, e) c c'
+instance Field3 (a, b, c, d, e, f) (a, b, c', d, e, f) c c'
+instance Field3 (a, b, c, d, e, f, g) (a, b, c', d, e, f, g) c c'
+
+instance Field4 (a, b, c, d) (a, b, c, d') d d'
+instance Field4 (a, b, c, d, e) (a, b, c, d', e) d d'
+instance Field4 (a, b, c, d, e, f) (a, b, c, d', e, f) d d'
+instance Field4 (a, b, c, d, e, f, g) (a, b, c, d', e, f, g) d d'
+
+instance Field5 (a, b, c, d, e) (a, b, c, d, e') e e'
+instance Field5 (a, b, c, d, e, f) (a, b, c, d, e', f) e e'
+instance Field5 (a, b, c, d, e, f, g) (a, b, c, d, e', f, g) e e'
+
+instance Field6 (a, b, c, d, e, f) (a, b, c, d, e, f') f f'
+instance Field6 (a, b, c, d, e, f, g) (a, b, c, d, e, f', g) f f'
+
+instance Field7 (a, b, c, d, e, f, g) (a, b, c, d, e, f, g') g g'
 
 type GList f = GCons f '[]
 
@@ -153,6 +219,10 @@ reproxyPred _ = Proxy
 type N0 = Z
 type N1 = 'S N0
 type N2 = 'S N1
+type N3 = 'S N2
+type N4 = 'S N3
+type N5 = 'S N4
+type N6 = 'S N5
 
 proxyN0 :: Proxy N0
 {-# INLINE proxyN0 #-}
@@ -165,3 +235,19 @@ proxyN1 = Proxy
 proxyN2 :: Proxy N2
 {-# INLINE proxyN2 #-}
 proxyN2 = Proxy
+
+proxyN3 :: Proxy N3
+{-# INLINE proxyN3 #-}
+proxyN3 = Proxy
+
+proxyN4 :: Proxy N4
+{-# INLINE proxyN4 #-}
+proxyN4 = Proxy
+
+proxyN5 :: Proxy N5
+{-# INLINE proxyN5 #-}
+proxyN5 = Proxy
+
+proxyN6 :: Proxy N6
+{-# INLINE proxyN6 #-}
+proxyN6 = Proxy

@@ -1,7 +1,10 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
-  , DeriveTraversable #-}
+  , DeriveGeneric
+  , DeriveTraversable
+  , FlexibleInstances
+  , MultiParamTypeClasses #-}
 module Id (Id (..)) where
 
 import Control.Applicative
@@ -10,14 +13,18 @@ import Control.Comonad
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
 
+import GHC.Generics (Generic)
+
 import Text.PrettyPrint.Free
 
 import Function
+import Lens
 
 newtype Id a = Id { runId :: a } deriving ( Read
                                           , Show
                                           , Functor
                                           , Foldable
+                                          , Generic
                                           , Traversable
                                           )
 
@@ -42,3 +49,5 @@ instance Monad Id where
 instance Pretty a => Pretty (Id a) where
   {-# INLINE pretty #-}
   pretty = pretty . runId
+
+instance Field1 (Id a) (Id b) a b
