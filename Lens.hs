@@ -27,8 +27,6 @@ import Data.Functor.Identity
 
 import GHC.Generics
 
-import Prelude hiding (take)
-
 type Lens s t a b = forall f . Functor f => (a -> f b) -> s -> f t
 
 lget :: Lens s s a a -> s -> a
