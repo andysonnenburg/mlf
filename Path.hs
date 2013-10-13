@@ -21,7 +21,7 @@ data Path a
   = Nil
   | Cons
     {-# UNPACK #-} !Int
-    {-# UNPAcK #-} !Int
+    {-# UNPACK #-} !Int
     !(Tree a)
     !(Path a)
 
