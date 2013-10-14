@@ -29,7 +29,7 @@ import Control.Applicative
 import Data.Functor.Identity
 import Data.Proxy
 
-import GHC.Generics
+import GHC.Generics (Generic (..), (:*:) (..), K1 (..), M1 (..), U1 (..))
 
 type Lens s t a b = forall f . Functor f => (a -> f b) -> s -> f t
 
@@ -130,22 +130,22 @@ instance Field7 (a, b, c, d, e, f, g) (a, b, c, d, e, f, g') g g'
 
 type family GSize (f :: * -> *) :: Nat
 type instance GSize U1 = Z
-type instance GSize (K1 i c) = 'S Z
+type instance GSize (K1 i c) = S Z
 type instance GSize (M1 i c f) = GSize f
 type instance GSize (a :*: b) = GSize a + GSize b
 
 type family (x :: Nat) + (y :: Nat) :: Nat
 type instance Z + y = y
-type instance 'S x + y = 'S (x + y)
+type instance S x + y = S (x + y)
 
 type family Subtract (x :: Nat) (y :: Nat) :: Nat
 type instance Subtract Z x = x
-type instance Subtract ('S x) ('S y) = Subtract x y
+type instance Subtract (S x) (S y) = Subtract x y
 
 type family (x :: Nat) > (y :: Nat) :: Bool
 type instance Z > x = False
-type instance 'S x > Z = True
-type instance 'S x > 'S y = x > y
+type instance S x > Z = True
+type instance S x > S y = x > y
 
 class GAt (n :: Nat) s t a b | n s -> a, n t -> b, n s b -> t, n t a -> s where
   gat :: f n -> Lens (s x) (t x) a b
@@ -184,12 +184,12 @@ proxySubtractSize _ _ = Proxy
 data Nat = Z | S Nat
 
 type N0 = Z
-type N1 = 'S N0
-type N2 = 'S N1
-type N3 = 'S N2
-type N4 = 'S N3
-type N5 = 'S N4
-type N6 = 'S N5
+type N1 = S N0
+type N2 = S N1
+type N3 = S N2
+type N4 = S N3
+type N5 = S N4
+type N6 = S N5
 
 proxyN0 :: Proxy N0
 {-# INLINE proxyN0 #-}
