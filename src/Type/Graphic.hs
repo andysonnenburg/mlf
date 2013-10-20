@@ -22,7 +22,7 @@ module Type.Graphic
        ) where
 
 import Control.Applicative
-import Control.Category ((<<<), (>>>))
+import Control.Category ((<<<))
 import Control.Monad.Reader
 
 import Data.Foldable (Foldable (foldMap), foldlM)
@@ -35,7 +35,6 @@ import GHC.Generics (Generic)
 import Prelude hiding (read)
 
 import Applicative ((<$$>))
-import Function ((|>))
 import Int
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
@@ -62,7 +61,7 @@ instance Field2 (Bound s a b) (Bound s a b) (Set s (Binding b)) (Set s (Binding 
 instance Field3 (Bound s a b) (Bound s a b) (Term b) (Term b)
 
 instance Foldable (Bound s a) where
-  foldMap f (Bound _ _ t) = foldMap f t
+  foldMap f = foldMap f . lask _3
 
 data Binding a
   = Root
@@ -112,13 +111,13 @@ fromRestricted =
         b <- read r_b
         return $ a == b
 
-toSyntactic :: MonadST m =>
-               Type (World m) (Maybe a) ->
-               m (Product Int (S.PolyType (Product Int) (Name a)))
+toSyntactic :: MonadST m
+            => Type (World m) (Maybe a)
+            -> m (Product Int (S.PolyType (Product Int) (Name a)))
 toSyntactic t0 = do
   boundNodes <- getBoundNodes t0
   fix (\ rec n0 -> do
-    t_s0 <- case lget _3 $ project n0 of
+    t_s0 <- case n0^.projected._3 of
       Bot -> return $ toInt n0 :* S.Bot
       Arr t_a t_b -> do
         n_a <- read =<< find t_a
@@ -129,14 +128,13 @@ toSyntactic t0 = do
   where
     nodeVar n = toInt n :* S.Var (nodeName n)
     nodeForall n bf o o' = toInt n :* S.Forall (nodeName n) bf o o'
-    nodeName n = Name (toInt n) a where
-      Bound a _ _ = project n
+    nodeName n = Name (n^.int) (n^.projected._1)
 
 getBoundNodes :: (MonadST m, s ~ World m)
               => Type s a
               -> m (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
 getBoundNodes = find >=> read >=> preorder >=> foldlM (\ ns' ->
-  find >=> read >=> \ n -> project n |> lget _2 >>> find >=> read >=> \ case
+  find >=> read >=> \ n -> find (n^.projected._2) >>= read >>= \ case
     Root -> return ns'
     Binder bf s' -> (find s' >>= read) <$$> \ n' -> Map.alter (\ case
       Nothing -> Just [(bf, n)]

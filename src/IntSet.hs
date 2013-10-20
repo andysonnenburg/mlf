@@ -27,7 +27,7 @@ instance IsInt a => Semigroup (IntSet a) where
 instance IsInt a => Monoid (IntSet a) where
   mempty = IntSet IntMap.empty
   mappend x y = IntSet $ mappend (unIntSet x) (unIntSet y)
-  mconcat = IntSet . mconcat . map unIntSet
+  mconcat = IntSet . mconcat . fmap unIntSet
 
 singleton :: IsInt a => a -> IntSet a
 singleton a = IntSet $ IntMap.singleton (toInt a) a

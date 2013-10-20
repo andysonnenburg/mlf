@@ -1,20 +1,29 @@
 {-# LANGUAGE
-    DataKinds
+    CPP
+  , DataKinds
   , DefaultSignatures
   , FlexibleContexts
   , FlexibleInstances
-  , FunctionalDependencies
-  , KindSignatures
-  , MultiParamTypeClasses
+  , FunctionalDependencies #-}
+#ifndef HLINT
+{-# LANGUAGE KindSignatures #-}
+#endif
+{-# LANGUAGE
+    MultiParamTypeClasses
   , Rank2Types
   , TypeFamilies
   , TypeOperators
   , UndecidableInstances #-}
 module Lens
        ( Lens
+       , Getter
+       , lask
+       , (^.)
        , lget
        , lput
        , lmodify
+       , lmap
+       , lset
        , Field1 (..)
        , Field2 (..)
        , Field3 (..)
@@ -27,88 +36,127 @@ module Lens
        ) where
 
 import Control.Applicative
+import Control.Monad.Reader.Class
+import Control.Monad.State.Class
 
 import Data.Functor.Identity
 import Data.Proxy (Proxy (Proxy))
 
 import GHC.Generics (Generic (..), (:*:) (..), K1 (..), M1 (..), U1 (..))
 
+infixl 8 ^.
+
 type Lens s t a b = forall f . Functor f => (a -> f b) -> s -> f t
+type Getter s a = forall r . (a -> Const r a) -> s -> Const r s
 
-lget :: Lens s s a a -> s -> a
+lask :: MonadReader s m => Getter s a -> m a
+{-# INLINE lask #-}
+lask f = asks (getConst . f Const)
+
+(^.) :: s -> Getter s a -> a
+{-# INLINE (^.) #-}
+s ^. f = getConst $ f Const s
+
+lget :: MonadState s m => Getter s a -> m a
 {-# INLINE lget #-}
-lget f = getConst . f Const
+lget f = gets (getConst . f Const)
 
-lput :: Lens s t a b -> b -> s -> t
+lput :: MonadState s m => Lens s s a a -> a -> m ()
 {-# INLINE lput #-}
-lput f = lmodify f . const
+lput f = modify . lset f
 
-lmodify :: Lens s t a b -> (a -> b) -> s -> t
+lmodify :: MonadState s m => Lens s s a a -> (a -> a) -> m ()
 {-# INLINE lmodify #-}
-lmodify f g = runIdentity . f (Identity . g)
+lmodify f = modify . lmap f
+
+lmap :: Lens s t a b -> (a -> b) -> s -> t
+{-# INLINE lmap #-}
+lmap f g = runIdentity . f (Identity . g)
+
+lset :: Lens s t a b -> b -> s -> t
+{-# INLINE lset #-}
+lset f = lmap f . const
 
 class Field1 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _1 :: Lens s t a b
-  default _1 :: (Generic s, Generic t, GAt N0 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _1 :: (Generic s, Generic t, GIxed N0 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _1 #-}
-  _1 = at proxyN0
+  _1 = ix proxyN0
+#endif
 
 class Field2 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _2 :: Lens s t a b
-  default _2 :: (Generic s, Generic t, GAt N1 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _2 :: (Generic s, Generic t, GIxed N1 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _2 #-}
-  _2 = at proxyN1
+  _2 = ix proxyN1
+#endif
 
 class Field3 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _3 :: Lens s t a b
-  default _3 :: (Generic s, Generic t, GAt N2 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _3 :: (Generic s, Generic t, GIxed N2 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _3 #-}
-  _3 = at proxyN2
+  _3 = ix proxyN2
+#endif
 
 class Field4 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _4 :: Lens s t a b
-  default _4 :: (Generic s, Generic t, GAt N3 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _4 :: (Generic s, Generic t, GIxed N3 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _4 #-}
-  _4 = at proxyN3
+  _4 = ix proxyN3
+#endif
 
 class Field5 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _5 :: Lens s t a b
-  default _5 :: (Generic s, Generic t, GAt N4 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _5 :: (Generic s, Generic t, GIxed N4 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _5 #-}
-  _5 = at proxyN4
+  _5 = ix proxyN4
+#endif
 
 class Field6 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _6 :: Lens s t a b
-  default _6 :: (Generic s, Generic t, GAt N5 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _6 :: (Generic s, Generic t, GIxed N5 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _6 #-}
-  _6 = at proxyN5
+  _6 = ix proxyN5
+#endif
 
 class Field7 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _7 :: Lens s t a b
-  default _7 :: (Generic s, Generic t, GAt N6 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _7 :: (Generic s, Generic t, GIxed N6 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _7 #-}
-  _7 = at proxyN6
+  _7 = ix proxyN6
+#endif
 
 class Field8 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _8 :: Lens s t a b
-  default _8 :: (Generic s, Generic t, GAt N7 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _8 :: (Generic s, Generic t, GIxed N7 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _8 #-}
-  _8 = at proxyN7
+  _8 = ix proxyN7
+#endif
 
 class Field9 s t a b | s -> a, t -> b, s b -> t, t a -> s where
   _9 :: Lens s t a b
-  default _9 :: (Generic s, Generic t, GAt N8 (Rep s) (Rep t) a b)
+#ifndef HLINT
+  default _9 :: (Generic s, Generic t, GIxed N8 (Rep s) (Rep t) a b)
              => Lens s t a b
   {-# INLINE _9 #-}
-  _9 = at proxyN8
+  _9 = ix proxyN8
+#endif
 
 instance Field1 (a, b) (a', b) a a'
 instance Field1 (a, b, c) (a', b, c) a a'
@@ -144,39 +192,45 @@ instance Field6 (a, b, c, d, e, f, g) (a, b, c, d, e, f', g) f f'
 
 instance Field7 (a, b, c, d, e, f, g) (a, b, c, d, e, f, g') g g'
 
-at :: (Generic s, Generic t, GAt n (Rep s) (Rep t) a b) => f n -> Lens s t a b
-{-# INLINE at #-}
-at n = \ f -> fmap to . gat n f . from
+ix :: (Generic s, Generic t, GIxed n (Rep s) (Rep t) a b) => f n -> Lens s t a b
+{-# INLINE ix #-}
+ix n = \ f -> fmap to . gix n f . from
 
-class GAt (n :: Nat) s t a b | n s -> a, n t -> b, n s b -> t, n t a -> s where
-  gat :: f n -> Lens (s x) (t x) a b
+#ifndef HLINT
+class GIxed (n :: Nat) s t a b | n s -> a, n t -> b, n s b -> t, n t a -> s where
+  gix :: f n -> Lens (s x) (t x) a b
+#endif
 
-instance GAt N0 (K1 i a) (K1 i b) a b where
-  {-# INLINE gat #-}
-  gat _ = \ f -> fmap K1 . f . unK1
+instance GIxed N0 (K1 i a) (K1 i b) a b where
+  {-# INLINE gix #-}
+  gix _ = \ f -> fmap K1 . f . unK1
 
-instance GAt n s t a b => GAt n (M1 i c s) (M1 i c t) a b where
-  {-# INLINE gat #-}
-  gat n = \ f -> fmap M1 . gat n f . unM1
+instance GIxed n s t a b => GIxed n (M1 i c s) (M1 i c t) a b where
+  {-# INLINE gix #-}
+  gix n = \ f -> fmap M1 . gix n f . unM1
 
-instance GAt' (GSize s > n) n s s' t t' a b
-      => GAt n (s :*: s') (t :*: t') a b where
-  {-# INLINE gat #-}
-  gat n = \ f s -> gat' (proxySizeGT (fst' s) n) n f s
+instance GIxed' (GSize s > n) n s s' t t' a b
+      => GIxed n (s :*: s') (t :*: t') a b where
+  {-# INLINE gix #-}
+  gix n = \ f s -> gix' (proxySizeGT (fst' s) n) n f s
 
-class GAt' (p :: Bool) (n :: Nat) s s' t t' a b where
-  gat' :: f p -> g n -> Lens ((s :*: s') x) ((t :*: t') x) a b
+#ifndef HLINT
+class GIxed' (p :: Bool) (n :: Nat) s s' t t' a b where
+  gix' :: f p -> g n -> Lens ((s :*: s') x) ((t :*: t') x) a b
+#endif
 
-instance (GAt n s t a b, s' ~ t') => GAt' True n s s' t t' a b where
-  {-# INLINE gat' #-}
-  gat' _ n = \ f (s :*: s') -> fmap (:*: s') $ gat n f s
+instance (GIxed n s t a b, s' ~ t') => GIxed' True n s s' t t' a b where
+  {-# INLINE gix' #-}
+  gix' _ n = \ f (s :*: s') -> fmap (:*: s') $ gix n f s
 
-instance (GAt (Subtract (GSize s) n) s' t' a b, s ~ t)
-      => GAt' False n s s' t t' a b where
-  {-# INLINE gat' #-}
-  gat' _ n = \ f (s :*: s') -> fmap (s :*:) $ gat (proxySubtractSize s n) f s'
+instance (GIxed (Subtract (GSize s) n) s' t' a b, s ~ t)
+      => GIxed' False n s s' t t' a b where
+  {-# INLINE gix' #-}
+  gix' _ n = \ f (s :*: s') -> fmap (s :*:) $ gix (proxySubtractSize s n) f s'
 
+#ifndef HLINT
 type family GSize (f :: * -> *) :: Nat
+#endif
 type instance GSize U1 = Z
 type instance GSize (K1 i c) = S Z
 type instance GSize (M1 i c f) = GSize f
@@ -196,15 +250,21 @@ fst' (a :*: _) = a
 
 data Nat = Z | S Nat
 
+#ifndef HLINT
 type family (x :: Nat) + (y :: Nat) :: Nat
+#endif
 type instance Z + y = y
 type instance S x + y = S (x + y)
 
+#ifndef HLINT
 type family Subtract (x :: Nat) (y :: Nat) :: Nat
+#endif
 type instance Subtract Z x = x
 type instance Subtract (S x) (S y) = Subtract x y
 
+#ifndef HLINT
 type family (x :: Nat) > (y :: Nat) :: Bool
+#endif
 type instance Z > x = False
 type instance S x > Z = True
 type instance S x > S y = x > y

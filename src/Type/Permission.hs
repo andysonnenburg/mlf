@@ -81,7 +81,7 @@ getPermissions :: (MonadST m, s ~ World m)
 getPermissions t = do
   n0 <- read =<< find t
   downs <- foldlM (\ downs -> find >=> read >=> \ n ->
-    project n |> lget _2 >>> find >=> read >=> \ case
+    project n |> lask _2 >>> find >=> read >=> \ case
       Root -> return $ Map.insert n Green downs
       Binder bf s' -> find s' >>= read |> fmap $
         flip (Map.insert n) downs <<< (downs!) >>> (bf,) >>> \ case
@@ -90,10 +90,10 @@ getPermissions t = do
           (Flexible, _) -> Red) mempty =<< (t:) <$> preorder n0
   ups <- flip execStateT mempty $ traverse_ (find >=> read >=> \ n -> do
     modify $ Map.alter (\ case
-      _ | poly $ lget _3 $ project n -> Just Polymorphic
+      _ | poly $ n^.projected._3 -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just up -> Just up) n
-    project n |> lget _2 >>> find >=> read >=> \ case
+    n^.projected._2 |> find >=> read >=> \ case
       Root -> return ()
       Binder bf s' -> do
         n' <- read =<< find s'

@@ -37,7 +37,7 @@ instance Semigroup (IntMap k v) where
 instance Monoid (IntMap k v) where
   mempty = IntMap mempty
   mappend x y = IntMap $ mappend (unIntMap x) (unIntMap y)
-  mconcat = IntMap . mconcat . map unIntMap
+  mconcat = IntMap . mconcat . fmap unIntMap
 
 (!) :: IsInt k => IntMap k v -> k -> v
 m!k = unIntMap m Internal.! toInt k

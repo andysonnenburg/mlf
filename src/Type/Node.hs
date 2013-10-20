@@ -1,6 +1,5 @@
 {-# LANGUAGE
-    DeriveGeneric
-  , FlexibleContexts
+    FlexibleContexts
   , FlexibleInstances
   , LambdaCase
   , MultiParamTypeClasses
@@ -11,6 +10,7 @@ module Type.Node
        ( Node
        , newNode
        , project
+       , projected
        , postorder
        , preorder
        ) where
@@ -24,8 +24,6 @@ import Data.Hashable (Hashable (hashWithSalt))
 import qualified Data.IntSet as Set
 import Data.Monoid (mempty)
 
-import GHC.Generics
-
 import Prelude hiding (read)
 
 import Int
@@ -34,11 +32,8 @@ import ST
 import Supply
 import UnionFind
 
-data Node s f = Node {-# UNPACK #-} !Int (f (Set s (Node s f))) deriving Generic
+data Node s f = Node {-# UNPACK #-} !Int (f (Set s (Node s f)))
 deriving instance Show (f (Set s (Node s f))) => Show (Node s f)
-
-instance Field1 (Node s f) (Node s f) Int Int
-instance Field2 (Node s f) (Node s f) (f (Set s (Node s f))) (f (Set s (Node s f)))
 
 instance Eq (Node s f) where
   Node x _ == Node y _ = x == y
@@ -54,7 +49,10 @@ newNode :: MonadSupply Int m => f (Set s (Node s f)) -> m (Node s f)
 newNode f = Node <$> supply <*> pure f
 
 project :: Node s f -> f (Set s (Node s f))
-project (Node _ f) = f
+project (Node _ x) = x
+
+projected :: Getter (Node s f) (f (Set s (Node s f)))
+projected f (Node _ x) = Const $ getConst $ f x
 
 preorder :: (MonadST m, s ~ World m, Foldable f)
          => Node s f -> m [Set s (Node s f)]

@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    DefaultSignatures
+    CPP
+  , DefaultSignatures
   , FlexibleInstances
   , FunctionalDependencies
   , MultiParamTypeClasses
@@ -26,8 +27,10 @@ import Stream
 
 class (Applicative m, Monad m) => MonadSupply s m | m -> s where
   supply :: m s
+#ifndef HLINT
   default supply :: (MonadTrans t, MonadSupply s m) => t m s
   supply = lift supply
+#endif
 
 type Supply s = SupplyT s Identity
 

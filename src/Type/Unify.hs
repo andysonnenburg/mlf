@@ -10,7 +10,7 @@ module Type.Unify
        ) where
 
 import Control.Applicative
-import Control.Category ((<<<), (>>>))
+import Control.Category ((>>>))
 import Control.Comonad
 import Control.Monad.Error
 import Control.Monad.Reader
@@ -25,7 +25,6 @@ import Text.PrettyPrint.Free (Pretty (pretty), (<+>), text)
 import Prelude hiding (read)
 
 import Applicative ((<$$>))
-import Function ((|>))
 import Hoist
 import Id
 import Int
@@ -65,11 +64,11 @@ unify :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
 unify t ts = do
   t_s <- extract' <$> toSyntactic t
   bs <- foldlM (\ bs -> find >=> read >=> \ n -> do
-    b <- read <=< find <<< lget _2 $ project n
+    b <- read <=< find $ n^.projected._2
     return $ Map.insert n b bs)
     mempty =<< preorder' t
   ancestors <- foldlM (\ ancestors -> find >=> read >=> \ n ->
-    project n |> lget _2 >>> find >=> read >=> \ case
+    find (n^.projected._2) >>= read >>= \ case
       Root -> return $ Map.insert n mempty ancestors
       Binder _ s' -> do
         n' <- read =<< find s'
@@ -81,7 +80,7 @@ unify t ts = do
   whenCyclic t $ cyclic t
   for_ graftedBots $ \ n -> unlessGreen (ps!n) $ t_s `doesNotSubsume` t
   preorder' t >>= traverse_ (find >=> read >=> \ n -> do
-    b' <- read <=< find <<< lget _2 $ project n
+    b' <- read <=< find $ n^.projected._2
     whenRed (ps!n) $ unlessM (sameBinding (bs!n) b') $ t_s `doesNotSubsume` t)
   where
     sameBinding = curry $ \ case
@@ -108,11 +107,11 @@ unify' = fix $ \ rec x y -> do
   r_y <- find y
   when (r_x /= r_y) $ do
     n_x <- read r_x
-    let b_x = project n_x
+    let b_x = n_x^.projected
     n_y <- read r_y
-    let b_y = project n_y
-    union (lget _2 b_x) (lget _2 b_y)
-    case (lget _3 b_x, lget _3 b_y) of
+    let b_y = n_y^.projected
+    union (b_x^._2) (b_y^._2)
+    case (b_x^._3, b_y^._3) of
       (Bot, Bot) -> do
         n_y `mergedInto` n_x
         union x y
@@ -161,7 +160,7 @@ rebind t0 bs m b2 = void $ foldlM (\ s t -> do
       b' = case Path.uncons p of
         Just (_, n', _) -> Binder bf n'
         Nothing -> Root
-  join $ write <$> find (lget _2 $ project n) <*> pure b'
+  join $ write <$> find (n^.projected._2) <*> pure b'
   return $ Map.insert n (Path.cons (toInt n) t p) s) mempty =<< preorder' t0
   where
     lca' = list Path.empty (foldl' lca)
@@ -178,8 +177,8 @@ getPartiallyGrafted t0 g =
   flip execStateT mempty $
   fix (\ rec t -> do
     n <- read =<< find t
-    let c = lget _3 $ project n
     whenM (gets $ Map.notMember n) $
+      let c = n^.projected._3 in
       if Set.member n g
       then do
         modify $ insertEmpty n
@@ -198,7 +197,7 @@ getPartiallyGrafted t0 g =
       n <- read =<< find t
       walked <- gets $ Map.member n
       modify $ insertOne n n'
-      unless walked $ case lget _3 $ project n of
+      unless walked $ case n^.projected._3 of
         Bot -> return ()
         Arr t_a t_b -> do
           t_a `graftedUnder` n
@@ -242,7 +241,7 @@ whenCyclic t0 m =
     n <- read =<< find t
     whenM (gets $ Set.notMember n) $ do
       whenM (asks $ Set.member n) $ lift $ lift m
-      case lget _3 $ project n of
+      case n^.projected._3 of
         Bot -> return ()
         Arr t_a t_b -> local (Set.insert n) $ rec t_a >> rec t_b
       modify $ Set.insert n) t0

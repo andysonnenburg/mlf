@@ -1,4 +1,4 @@
-{-# LANGUAGE DefaultSignatures, TypeFamilies #-}
+{-# LANGUAGE CPP, DefaultSignatures, TypeFamilies #-}
 module ST (MonadST (..)) where
 
 import Control.Applicative
@@ -9,9 +9,10 @@ import Control.Monad.State.Strict
 class (Applicative m, Monad m) => MonadST m where
   type World m
   liftST :: ST (World m) a -> m a
-
+#ifndef HLINT
   default liftST :: (MonadTrans t, MonadST m) => ST (World m) a -> t m a
   liftST = lift . liftST
+#endif
 
 instance MonadST (ST s) where
   type World (ST s) = s
