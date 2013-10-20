@@ -12,7 +12,7 @@ import Data.Semigroup
 
 import GHC.Generics (Generic)
 
-import Text.PrettyPrint.Free
+import Text.PrettyPrint.Free (Pretty (pretty), char)
 
 import Lens
 
@@ -27,12 +27,12 @@ instance Field2 Pos Pos Int Int
 
 plusPos :: Char -> Pos -> Pos
 plusPos = \ case
-  '\t' -> lmap _2 (\ i -> (((i + 7) `div` 8) * 8 + 1))
+  '\t' -> lmap _2 ((+ 1) . (* 8) . (`div` 8) . (+ 7))
   '\n' -> lmap _1 (+ 1)
   _ -> lmap _2 (+ 1)
 
 instance Pretty Pos where
-  pretty (Pos i j) = pretty i <> pretty ':' <> pretty j
+  pretty x = pretty (x^._1) <> pretty ':' <> pretty (x^._2)
 
 data Loc = Loc {-# UNPACK #-} !Pos {-# UNPACK #-} !Pos deriving (Show, Generic)
 
@@ -40,7 +40,7 @@ instance Field1 Loc Loc Pos Pos
 instance Field2 Loc Loc Pos Pos
 
 instance Semigroup Loc where
-  Loc a b <> Loc a' b' = Loc (min a a') (max b b')
+  x <> y = Loc (min (x^._1) (y^._1)) (max (x^._2) (y^._2))
 
 instance Pretty Loc where
   pretty (Loc x@(Pos i j) y@(Pos i' j')) = case (i == i', j == j') of

@@ -1,4 +1,8 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE
+    DeriveGeneric
+  , FlexibleInstances
+  , LambdaCase
+  , MultiParamTypeClasses #-}
 module UnionFind
        ( Set
        , new
@@ -18,8 +22,11 @@ import Control.Monad.ST.Safe
 import Data.Function (fix)
 import Data.STRef
 
+import GHC.Generics (Generic)
+
 import Prelude hiding (elem, read)
 
+import Lens
 import ST
 import STIntRef
 
@@ -42,7 +49,8 @@ union :: MonadST m => Set (World m) a -> Set (World m) a -> m ()
 {-# INLINE union #-}
 union = unionWith const
 
-unionWith :: MonadST m => (a -> a -> a) -> Set (World m) a -> Set (World m) a -> m ()
+unionWith :: MonadST m
+          => (a -> a -> a) -> Set (World m) a -> Set (World m) a -> m ()
 unionWith f x y = liftST $ do
   Three xRank xRef x' <- find' x
   Three yRank yRef y' <- find' y
@@ -60,14 +68,12 @@ unionWith f x y = liftST $ do
         writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
 
 find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
-find =
-  liftST .
-  fmap (\ (Two a _) -> Ref a) . fix (\ rec set -> readSTRef set >>= \ case
+find = liftST . fmap (Ref . lask _1) . fix (\ rec set -> readSTRef set >>= \ case
     Repr _ elem -> return $! Two elem set
     Link set' -> do
-      two@(Two _ set'') <- rec set'
-      writeSTRef set $ Link set''
-      return two) . unSet
+      x <- rec set'
+      writeSTRef set $ Link $ x^._2
+      return x) . unSet
 
 write :: MonadST m => Ref (World m) a -> a -> m ()
 {-# INLINE write #-}
@@ -81,17 +87,24 @@ find' :: Set s a -> ST s (Three s a)
 find' = fix (\ rec set -> readSTRef set >>= \ case
   Repr rank elem -> return $! Three rank elem set
   Link set' -> do
-    three@(Three _ _ set'') <- rec set'
-    writeSTRef set $ Link set''
-    return three) . unSet
+    x <- rec set'
+    writeSTRef set $ Link $ x^._3
+    return x) . unSet
 
 data Two s a =
   Two
   {-# UNPACK #-} !(STRef s a)
-  {-# UNPACK #-} !(STRef s (Link s a))
+  {-# UNPACK #-} !(STRef s (Link s a)) deriving Generic
+
+instance Field1 (Two s a) (Two s a) (STRef s a) (STRef s a)
+instance Field2 (Two s a) (Two s a) (STRef s (Link s a)) (STRef s (Link s a))
 
 data Three s a =
   Three
   {-# UNPACK #-} !(STIntRef s)
   {-# UNPACK #-} !(STRef s a)
-  {-# UNPACK #-} !(STRef s (Link s a))
+  {-# UNPACK #-} !(STRef s (Link s a)) deriving Generic
+
+instance Field1 (Three s a) (Three s a) (STIntRef s) (STIntRef s)
+instance Field2 (Three s a) (Three s a) (STRef s a) (STRef s a)
+instance Field3 (Three s a) (Three s a) (STRef s (Link s a)) (STRef s (Link s a))

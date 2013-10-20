@@ -1,10 +1,7 @@
 {-# LANGUAGE
     FlexibleInstances
   , FunctionalDependencies
-  , LambdaCase
-  , MultiParamTypeClasses
-  , TypeFamilies
-  , UndecidableInstances #-}
+  , MultiParamTypeClasses #-}
 module Catch
        ( MonadCatch (..)
        , mapE

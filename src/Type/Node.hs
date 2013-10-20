@@ -36,8 +36,8 @@ data Node s f = Node {-# UNPACK #-} !Int (f (Set s (Node s f)))
 deriving instance Show (f (Set s (Node s f))) => Show (Node s f)
 
 instance Eq (Node s f) where
-  Node x _ == Node y _ = x == y
-  Node x _ /= Node y _ = x /= y
+  x == y = x^.int == y^.int
+  x /= y = x^.int /= y^.int
 
 instance Hashable (Node s f) where
   hashWithSalt x = hashWithSalt x . toInt
@@ -52,7 +52,7 @@ project :: Node s f -> f (Set s (Node s f))
 project (Node _ x) = x
 
 projected :: Getter (Node s f) (f (Set s (Node s f)))
-projected f (Node _ x) = Const $ getConst $ f x
+projected f = Const . getConst . f . project
 
 preorder :: (MonadST m, s ~ World m, Foldable f)
          => Node s f -> m [Set s (Node s f)]
@@ -70,4 +70,4 @@ postorder (Node x0 f0) = evalStateT (fix (\ rec -> foldlM $ \ ss s ->
     True -> return ss
     False -> do
       modify $ Set.insert x
-      rec (s:ss) f) [] f0) $ Set.singleton x0
+      rec (s:ss) f) mempty f0) $ Set.singleton x0

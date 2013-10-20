@@ -9,6 +9,7 @@ module IntMap
        , insertWith
        , delete
        , lookup
+       , findWithDefault
        , member
        , notMember
        , alter
@@ -53,6 +54,9 @@ delete k = IntMap . Internal.delete (toInt k) . unIntMap
 
 lookup :: IsInt k => k -> IntMap k v -> Maybe v
 lookup k = Internal.lookup (toInt k) . unIntMap
+
+findWithDefault :: IsInt k => v -> k -> IntMap k v -> v
+findWithDefault v k = Internal.findWithDefault v (toInt k) . unIntMap
 
 member :: IsInt k => k -> IntMap k v -> Bool
 member k = Internal.member (toInt k) . unIntMap

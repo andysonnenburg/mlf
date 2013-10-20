@@ -16,13 +16,20 @@ import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 
-import Data.Foldable (Foldable, foldl', foldlM, foldMap, for_, toList, traverse_)
+import Data.Foldable (Foldable,
+                      foldl',
+                      foldlM,
+                      foldMap,
+                      foldr,
+                      for_,
+                      toList,
+                      traverse_)
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>), mempty)
 
 import Text.PrettyPrint.Free (Pretty (pretty), (<+>), text)
 
-import Prelude hiding (read)
+import Prelude hiding (foldr, read)
 
 import Applicative ((<$$>))
 import Hoist
@@ -149,19 +156,21 @@ rebind :: (MonadST m, s ~ World m)
        -> m ()
 rebind t0 bs m b2 = void $ foldlM (\ s t -> do
   n <- read =<< find t
-  b1_n <- fmap (flip lookupMany s . toList) $
+  b1_n <- fmap (flip lookupMany s) $
           foldlM (\ ns' n_m -> case bs!n_m of
-            Binder _ t' -> Set.insert <$> (read =<< find t') <*> pure ns'
+            Binder _ t' -> Set.insert <$> (find t' >>= read) <*> pure ns'
             Root -> return ns')
-          mempty $ fromMaybe mempty $ Map.lookup n m
-  let b2_n = flip lookupMany s . maybe mempty toList $ Map.lookup n b2
+          mempty $ Map.findWithDefault (Set.singleton n) n m
+  let b2_n = flip lookupMany s $ fromMaybe mempty $ Map.lookup n b2
       p = lca' (b1_n <> b2_n)
-      bf = foldMap bindingFlag $ flip lookupMany bs $ toList $ m!n
+      bf = foldMap bindingFlag $
+           flip lookupMany bs $
+           Map.findWithDefault (Set.singleton n) n m
       b' = case Path.uncons p of
         Just (_, n', _) -> Binder bf n'
-        Nothing -> Root
+        Nothing -> error "rebind"
   join $ write <$> find (n^.projected._2) <*> pure b'
-  return $ Map.insert n (Path.cons (toInt n) t p) s) mempty =<< preorder' t0
+  return $ Map.insert n (Path.cons (n^.int) t p) s) mempty =<< preorder' t0
   where
     lca' = list Path.empty (foldl' lca)
     bindingFlag = \ case

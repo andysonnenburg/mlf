@@ -7,8 +7,7 @@
   , FlexibleInstances
   , LambdaCase
   , MultiParamTypeClasses
-  , TypeFamilies
-  , ViewPatterns #-}
+  , TypeFamilies #-}
 module Type.Graphic
        ( module Type.Node
        , Type
@@ -25,7 +24,7 @@ import Control.Applicative
 import Control.Category ((<<<))
 import Control.Monad.Reader
 
-import Data.Foldable (Foldable (foldMap), foldlM)
+import Data.Foldable (Foldable (foldMap), foldlM, foldrM)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (mempty)
 import Data.Traversable
@@ -115,7 +114,7 @@ toSyntactic :: MonadST m
             => Type (World m) (Maybe a)
             -> m (Product Int (S.PolyType (Product Int) (Name a)))
 toSyntactic t0 = do
-  boundNodes <- getBoundNodes t0
+  bns <- getBoundNodes t0
   fix (\ rec n0 -> do
     t_s0 <- case n0^.projected._3 of
       Bot -> return $ toInt n0 :* S.Bot
@@ -123,8 +122,8 @@ toSyntactic t0 = do
         n_a <- read =<< find t_a
         n_b <- read =<< find t_b
         return $ toInt n0 :* S.Mono (S.Arr (nodeVar n_a) (nodeVar n_b))
-    foldM (\ t_s (bf, n) -> nodeForall n bf <$> rec n <*> pure t_s)
-      t_s0 (fromMaybe mempty $ Map.lookup n0 boundNodes)) =<< read =<< find t0
+    foldrM (\ (bf, n) t_s -> nodeForall n bf <$> rec n <*> pure t_s)
+      t_s0 (fromMaybe mempty $ Map.lookup n0 bns)) =<< read =<< find t0
   where
     nodeVar n = toInt n :* S.Var (nodeName n)
     nodeForall n bf o o' = toInt n :* S.Forall (nodeName n) bf o o'
