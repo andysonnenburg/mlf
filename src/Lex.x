@@ -93,4 +93,7 @@ alexGetByte :: AlexInput -> Maybe (Word8, AlexInput)
 alexGetByte (ParserState pos xs) =
   (\ (x, ys) -> (x, ParserState (plusPos (w2c x) pos) ys)) <$>
   ByteString.uncons xs
+
+alexInputPrevChar :: AlexInput -> Char
+alexInputPrevChar = error "alexInputPrevChar"
 }
