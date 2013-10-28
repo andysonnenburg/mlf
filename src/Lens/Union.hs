@@ -30,6 +30,7 @@ class VariantA s t a b | s -> a, t -> b, s b -> t, t a -> s where
 #ifndef HLINT
   default _A :: (Generic s, Generic t, GIxed N0 (Rep s) (Rep t) a b)
              => Prism s t a b
+  {-# INLINE _A #-}
   _A = ix (Proxy :: Proxy N0)
 #endif
 
@@ -38,6 +39,7 @@ class VariantB s t a b | s -> a, t -> b, s b -> t, t a -> s where
 #ifndef HLINT
   default _B :: (Generic s, Generic t, GIxed N1 (Rep s) (Rep t) a b)
              => Prism s t a b
+  {-# INLINE _B #-}
   _B = ix (Proxy :: Proxy N1)
 #endif
 
@@ -150,7 +152,9 @@ fromGTuple = guncons unnil
 
 instance IsGTuple U1 where
   type GCons U1 xs = xs
+  {-# INLINE gcons #-}
   gcons = flip const
+  {-# INLINE guncons #-}
   guncons = ($ U1)
 
 #ifndef HLINT
