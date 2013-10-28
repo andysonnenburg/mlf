@@ -27,6 +27,10 @@ executable mlf
     Int,
     IntMap,
     IntSet,
+    Lens,
+    Lens.Lens,
+    Lens.Tuple
+    Lens.Union,
     Lex,
     List,
     Loc,

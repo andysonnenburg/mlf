@@ -52,28 +52,28 @@ union = unionWith const
 unionWith :: MonadST m
           => (a -> a -> a) -> Set (World m) a -> Set (World m) a -> m ()
 unionWith f x y = liftST $ do
-  Three xRank xRef x' <- find' x
-  Three yRank yRef y' <- find' y
+  Three xRankRef xRef xLinkRef <- find' x
+  Three yRankRef yRef yLinkRef <- find' y
   when (xRef /= yRef) $
-    compare <$> readSTIntRef xRank <*> readSTIntRef yRank >>= \ case
+    compare <$> readSTIntRef xRankRef <*> readSTIntRef yRankRef >>= \ case
       LT -> do
-        writeSTRef x' $ Link y'
+        writeSTRef xLinkRef $ Link yLinkRef
         writeSTRef yRef =<< f <$> readSTRef xRef <*> readSTRef yRef
       EQ -> do
-        modifySTIntRef xRank (+ 1)
-        writeSTRef y' $ Link x'
+        modifySTIntRef xRankRef (+ 1)
+        writeSTRef yLinkRef $ Link xLinkRef
         writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
       GT -> do
-        writeSTRef y' $ Link x'
+        writeSTRef yLinkRef $ Link xLinkRef
         writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
 
 find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
-find = liftST . fmap (Ref . lask _1) . fix (\ rec set -> readSTRef set >>= \ case
-    Repr _ elem -> return $! Two elem set
-    Link set' -> do
-      x <- rec set'
-      writeSTRef set $ Link $ x^._2
-      return x) . unSet
+find = liftST . fmap (Ref . lask _1) . fix (\ rec linkRef -> readSTRef linkRef >>= \ case
+  Repr _ ref -> return $! Two ref linkRef
+  Link linkRef' -> do
+    x <- rec linkRef'
+    writeSTRef linkRef $ Link $ x^._2
+    return x) . unSet
 
 write :: MonadST m => Ref (World m) a -> a -> m ()
 {-# INLINE write #-}
@@ -84,11 +84,11 @@ read :: MonadST m => Ref (World m) a -> m a
 read = liftST . readSTRef . unRef
 
 find' :: Set s a -> ST s (Three s a)
-find' = fix (\ rec set -> readSTRef set >>= \ case
-  Repr rank elem -> return $! Three rank elem set
-  Link set' -> do
-    x <- rec set'
-    writeSTRef set $ Link $ x^._3
+find' = fix (\ rec linkRef -> readSTRef linkRef >>= \ case
+  Repr rankRef ref -> return $! Three rankRef ref linkRef
+  Link linkRef' -> do
+    x <- rec linkRef'
+    writeSTRef linkRef $ Link $ x^._3
     return x) . unSet
 
 data Two s a =

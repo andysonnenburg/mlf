@@ -3,7 +3,6 @@
   , FlexibleContexts
   , LambdaCase
   , RecordWildCards
-  , TupleSections
   , TypeFamilies #-}
 module Main (main) where
 
@@ -119,7 +118,7 @@ getTypes xs = find >=> read >=> preorder >=> foldlM (\ ts t ->
     Bound (Just y) _ _ | Set.member y ys -> t:ts
     _ -> ts) mempty
   where
-    ys = Set.fromList $ map Text.pack xs
+    ys = Set.fromList $ Text.pack <$> xs
 
 data Error e a
   = ParseError e ParseError

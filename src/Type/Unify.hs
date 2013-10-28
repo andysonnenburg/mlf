@@ -16,14 +16,7 @@ import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 
-import Data.Foldable (Foldable,
-                      foldl',
-                      foldlM,
-                      foldMap,
-                      foldr,
-                      for_,
-                      toList,
-                      traverse_)
+import Data.Foldable hiding (find)
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>), mempty)
 
