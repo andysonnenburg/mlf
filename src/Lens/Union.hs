@@ -46,8 +46,10 @@ ix :: (Generic s, Generic t, GIxed n (Rep s) (Rep t) a b)
 {-# INLINE ix #-}
 ix n = \ f -> fmap to . gix n f . from
 
+#ifndef HLINT
 class GIxed (n :: Nat) s t a b | n s -> a, n t -> b, n s b -> t, n t a -> s where
   gix :: f n -> Prism (s x) (t x) a b
+#endif
 
 instance GIxed N0 (K1 i a) (K1 i b) a b where
   {-# INLINE gix #-}
@@ -69,8 +71,10 @@ instance (IsGTuple s, IsGTuple s', IsGTuple t, IsGTuple t',
   {-# INLINE gix #-}
   gix _ = \ f -> fmap (fromGTuple . fromTuple) . f . toTuple . toGTuple
 
+#ifndef HLINT
 class GIxed' (p :: Bool) (n :: Nat) s s' t t' a b where
   gix' :: f p -> g n -> Prism ((s :+: s') x) ((t :+: t') x) a b
+#endif
 
 instance (GIxed n s t a b, s' ~ t') => GIxed' True n s s' t t' a b where
   {-# INLINE gix' #-}
@@ -82,38 +86,48 @@ instance (GIxed (Subtract (GSize s) n) s' t' a b, s ~ t)
   gix' _ n = \ f s ->
     gsum (pure . L1) (fmap R1 . gix (reproxySubtractSize (proxyL s) n) f) s
 
+#ifndef HLINT
 data GTuple xs where
   U :: GTuple '[]
   (:*) :: x -> GTuple xs -> GTuple (x ': xs)
+#endif
 
 infixr 5 :*
 
+#ifndef HLINT
 uncons :: (a -> GTuple as -> r) -> GTuple (a ': as) -> r
 {-# INLINE uncons #-}
 uncons f (a :* as) = f a as
+#endif
 
+#ifndef HLINT
 unnil :: r -> GTuple '[] -> r
 {-# INLINE unnil #-}
 unnil r U = r
+#endif
 
 class IsTuple xs where
   type Tuple xs
   toTuple :: GTuple xs -> Tuple xs
   fromTuple :: Tuple xs -> GTuple xs
 
+#ifndef HLINT
 instance IsTuple '[] where
   type Tuple '[] = ()
   {-# INLINE toTuple #-}
   toTuple _ = ()
   {-# INLINE fromTuple #-}
   fromTuple _ = U
+#endif
 
+#ifndef HLINT
 instance IsTuple [a, b] where
   type Tuple [a, b] = (a, b)
   {-# INLINE toTuple #-}
   toTuple = uncons $ \ a -> uncons $ \ b -> unnil (a, b)
   {-# INLINE fromTuple #-}
   fromTuple (a, b) = a :* b :* U
+#endif
 
 type ToTuple s = Tuple (GList s)
 
@@ -122,7 +136,9 @@ class IsGTuple s where
   gcons :: s x -> GTuple xs -> GTuple (GCons s xs)
   guncons :: (s x -> GTuple xs -> r) -> GTuple (GCons s xs) -> r
 
+#ifndef HLINT
 type GList s = GCons s '[]
+#endif
 
 toGTuple :: IsGTuple s => s x -> GTuple (GList s)
 {-# INLINE toGTuple #-}
@@ -137,12 +153,14 @@ instance IsGTuple U1 where
   gcons = flip const
   guncons = ($ U1)
 
+#ifndef HLINT
 instance IsGTuple (K1 i c) where
   type GCons (K1 i c) xs = c ': xs
   {-# INLINE gcons #-}
   gcons = (:*) . unK1
   {-# INLINE guncons #-}
   guncons f = uncons $ \ c ys -> f (K1 c) ys
+#endif
 
 instance IsGTuple f => IsGTuple (M1 i c f) where
   type GCons (M1 i c f) xs = GCons f xs
