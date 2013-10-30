@@ -33,7 +33,7 @@ import GHC.Generics (Generic)
 
 import Prelude hiding (read)
 
-import Applicative ((<$$>))
+import Function
 import Int
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
@@ -132,8 +132,8 @@ getBoundNodes :: (MonadST m, s ~ World m)
               => Type s a
               -> m (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
 getBoundNodes = find >=> read >=> preorder >=> foldlM (\ ns' ->
-  find >=> read >=> \ n -> find (n^.projected._2) >>= read >>= \ case
+  find >=> read >=> \ n -> n^.projected._2 $$ find >=> read >=> \ case
     Root -> return ns'
-    Binder bf s' -> (find s' >>= read) <$$> \ n' -> Map.alter (\ case
+    Binder bf s' -> find s' >>= read <&> \ n' -> Map.alter (\ case
       Nothing -> Just [(bf, n)]
       Just ns -> Just ((bf, n):ns)) n' ns') mempty
