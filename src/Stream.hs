@@ -11,15 +11,13 @@ module Stream
        ) where
 
 import Control.Comonad
+import Control.Lens
 
 import Data.Foldable
-import Data.Traversable
 
 import GHC.Generics (Generic)
 
 import Prelude hiding (enumFrom)
-
-import Lens
 
 infixr 5 :|
 
@@ -34,7 +32,7 @@ instance Field1 (Stream a) (Stream a) a a
 instance Field2 (Stream a) (Stream a) (Stream a) (Stream a)
 
 instance Comonad Stream where
-  extract = lask _1
+  extract = view _1
   duplicate x = x :| duplicate (x^._2)
 
 enumFrom :: Enum a => a -> Stream a

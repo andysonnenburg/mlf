@@ -1,8 +1,6 @@
 module Int (IsInt (..), int) where
 
-import Control.Applicative
-
-import Lens
+import Control.Lens
 
 class IsInt a where
   toInt :: a -> Int
@@ -10,5 +8,5 @@ class IsInt a where
 instance IsInt Int where
   toInt = id
 
-int :: IsInt a => Getter a Int
-int f = Const . getConst . f . toInt
+int :: IsInt a => IndexPreservingGetter a Int
+int = to toInt

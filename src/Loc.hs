@@ -8,13 +8,13 @@ module Loc
        , Loc (..)
        ) where
 
+import Control.Lens
+
 import Data.Semigroup
 
 import GHC.Generics (Generic)
 
 import Text.PrettyPrint.Free (Pretty (pretty), char)
-
-import Lens
 
 data Pos = Pos {-# UNPACK #-} !Int {-# UNPACK #-} !Int deriving ( Show
                                                                 , Eq
@@ -27,9 +27,9 @@ instance Field2 Pos Pos Int Int
 
 plusPos :: Char -> Pos -> Pos
 plusPos = \ case
-  '\t' -> lmap _2 ((+ 1) . (* 8) . (`div` 8) . (+ 7))
-  '\n' -> lmap _1 (+ 1)
-  _ -> lmap _2 (+ 1)
+  '\t' ->  _2 %~ ((+ 1) . (* 8) . (`div` 8) . (+ 7))
+  '\n' -> _1 +~ 1
+  _ -> _2 +~ 1
 
 instance Pretty Pos where
   pretty x = pretty (x^._1) <> pretty ':' <> pretty (x^._2)

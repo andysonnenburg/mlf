@@ -11,6 +11,10 @@ before_install:
 
 install:
  - cabal-1.18 update
+ - cd ..
+ - git clone https://github.com/sonyandy/lens.git
+ - cd lens
+ - cabal-1.18 install
  - cabal-1.18 install --only-dependencies --enable-tests --enable-benchmarks
 
 script:

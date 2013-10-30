@@ -12,6 +12,7 @@ module Type.Unify
 import Control.Applicative
 import Control.Category ((>>>))
 import Control.Comonad
+import Control.Lens
 import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -32,7 +33,6 @@ import IntMap (IntMap, (!))
 import qualified IntMap as Map
 import IntSet (IntSet)
 import qualified IntSet as Set
-import Lens
 import List (list)
 import Monad
 import Name

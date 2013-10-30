@@ -10,18 +10,16 @@ module Product (Product (..), local) where
 import Control.Comonad.Env (Comonad (..),
                             ComonadApply (..),
                             ComonadEnv (..))
+import Control.Lens
 
 import Data.Foldable
 import Data.Semigroup (Semigroup)
-import Data.Traversable
 
 import GHC.Generics (Generic)
 
 import System.Console.Terminfo.PrettyPrint
 
 import Text.PrettyPrint.Free
-
-import Lens
 
 data Product a b = a :* b deriving ( Bounded
                                    , Eq

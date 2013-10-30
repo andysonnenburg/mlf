@@ -16,6 +16,7 @@ module UnionFind
 
 import Control.Applicative
 import Control.Category ((<<<))
+import Control.Lens
 import Control.Monad
 import Control.Monad.ST.Safe
 
@@ -26,7 +27,6 @@ import GHC.Generics (Generic)
 
 import Prelude hiding (elem, read)
 
-import Lens
 import ST
 import STIntRef
 
@@ -68,7 +68,7 @@ unionWith f x y = liftST $ do
         writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
 
 find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
-find = liftST . fmap (Ref . lask _1) . fix (\ rec linkRef -> readSTRef linkRef >>= \ case
+find = liftST . fmap (Ref . view _1) . fix (\ rec linkRef -> readSTRef linkRef >>= \ case
   Repr _ ref -> return $! Two ref linkRef
   Link linkRef' -> do
     x <- rec linkRef'

@@ -16,6 +16,7 @@ module Type.Node
        ) where
 
 import Control.Applicative
+import Control.Lens
 import Control.Monad
 import Control.Monad.State.Strict
 
@@ -27,7 +28,6 @@ import Data.Monoid (mempty)
 import Prelude hiding (read)
 
 import Int
-import Lens
 import ST
 import Supply
 import UnionFind
@@ -51,8 +51,8 @@ newNode f = Node <$> supply <*> pure f
 project :: Node s f -> f (Set s (Node s f))
 project (Node _ x) = x
 
-projected :: Getter (Node s f) (f (Set s (Node s f)))
-projected f = Const . getConst . f . project
+projected :: IndexPreservingGetter (Node s f) (f (Set s (Node s f)))
+projected = to project
 
 preorder :: (MonadST m, s ~ World m, Foldable f)
          => Node s f -> m [Set s (Node s f)]

@@ -1,5 +1,6 @@
 {-# LANGUAGE
     DeriveFunctor
+  , DeriveGeneric
   , FlexibleInstances
   , LambdaCase
   , MultiParamTypeClasses
@@ -11,7 +12,10 @@ module Sum
        ) where
 
 import Control.Applicative
+import Control.Lens
 import Control.Monad.Error
+
+import GHC.Generics (Generic)
 
 import Catch
 import ST
@@ -22,6 +26,7 @@ data Sum a b = L a | R b deriving ( Eq
                                   , Read
                                   , Show
                                   , Functor
+                                  , Generic
                                   )
 
 instance Applicative (Sum e) where
@@ -42,6 +47,9 @@ instance MonadError e (Sum e) where
 instance MonadCatch e (Sum e) (Sum e') where
   L e `catch` h = h e
   R a `catch` _ = R a
+
+instance VariantA (Sum a c) (Sum b c) a b
+instance VariantB (Sum c a) (Sum c b) a b
 
 newtype SumT e m a = SumT { runSumT :: m (Sum e a) } deriving Functor
 

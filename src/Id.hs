@@ -9,6 +9,7 @@ module Id (Id (..)) where
 
 import Control.Applicative
 import Control.Comonad
+import Control.Lens
 
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
@@ -16,9 +17,6 @@ import Data.Traversable (Traversable)
 import GHC.Generics (Generic)
 
 import Text.PrettyPrint.Free
-
-import Function
-import Lens
 
 newtype Id a = Id { runId :: a } deriving ( Read
                                           , Show
@@ -44,7 +42,7 @@ instance Monad Id where
   {-# INLINE return #-}
   return = Id
   {-# INLINE (>>=) #-}
-  m >>= f = Id $ runId m |> runId . f
+  m >>= f = Id $ runId $ f $ runId m
 
 instance Pretty a => Pretty (Id a) where
   {-# INLINE pretty #-}

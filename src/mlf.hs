@@ -71,7 +71,7 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
          t_r <- Restricted.fromSyntactic =<< mapEE RenameError (rename t)
          t_g <- Graphic.fromRestricted t_r
          Graphic.toSyntactic t_g
-    |> \ case
+    $$ \ case
       L e -> do
         hPutDoc stderr $ pretty e
         hPutStrLn stderr ""
@@ -86,7 +86,7 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
          t_g <- Graphic.fromRestricted t_r
          p <- toIntMap . fmap Permission.toScopedEffect <$> getPermissions t_g
          hoist' (local (p!)) <$> Graphic.toSyntactic t_g
-    |> \ case
+    $$ \ case
       L e -> do
         hPutDoc stderr $ pretty e
         hPutStrLn stderr ""
@@ -100,7 +100,7 @@ main = mlf <$> getProgName >>= cmdArgs >>= \ case
          ts <- getTypes names t_g
          mapE UnifyError (unify t_g ts)
          Graphic.toSyntactic t_g
-    |> \ case
+    $$ \ case
       L e -> do
         hPutDoc stderr $ pretty e
         hPutStrLn stderr ""
@@ -114,7 +114,7 @@ getTypes :: (MonadST m, s ~ World m)
          -> Graphic.Type s (Maybe Text)
          -> m [Graphic.Type s (Maybe Text)]
 getTypes xs = find >=> read >=> preorder >=> foldlM (\ ts t ->
-  find t >>= read |> fmap $ project >>> \ case
+  find t >>= read $$ fmap $ project >>> \ case
     Bound (Just y) _ _ | Set.member y ys -> t:ts
     _ -> ts) mempty
   where

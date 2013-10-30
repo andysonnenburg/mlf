@@ -22,12 +22,12 @@ module Type.Graphic
 
 import Control.Applicative
 import Control.Category ((<<<))
+import Control.Lens
 import Control.Monad.Reader
 
 import Data.Foldable (Foldable (foldMap), foldlM, foldrM)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (mempty)
-import Data.Traversable
 
 import GHC.Generics (Generic)
 
@@ -37,7 +37,6 @@ import Applicative ((<$$>))
 import Int
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
-import Lens
 import Name
 import Product (Product (..))
 import ST
@@ -60,7 +59,7 @@ instance Field2 (Bound s a b) (Bound s a b) (Set s (Binding b)) (Set s (Binding 
 instance Field3 (Bound s a b) (Bound s a b) (Term b) (Term b)
 
 instance Foldable (Bound s a) where
-  foldMap f = foldMap f . lask _3
+  foldMap f = foldMap f . view _3
 
 data Binding a
   = Root

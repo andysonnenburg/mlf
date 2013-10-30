@@ -10,6 +10,7 @@ module Type.Permission
 
 import Control.Applicative
 import Control.Category ((<<<), (>>>))
+import Control.Lens
 import Control.Monad.State.Strict
 
 import Data.Foldable (foldlM, traverse_)
@@ -21,10 +22,9 @@ import System.Console.Terminfo.PrettyPrint
 import Prelude hiding (read)
 
 import Applicative
-import Function ((|>))
+import Function (($$))
 import IntMap (IntMap, (!))
 import qualified IntMap as Map
-import Lens
 import ST
 import Type.Graphic
 import UnionFind
@@ -80,9 +80,9 @@ getPermissions :: (MonadST m, s ~ World m)
 getPermissions t = do
   n0 <- read =<< find t
   colors <- foldlM (\ colors -> find >=> read >=> \ n ->
-    n^.projected._2 |> find >=> read >=> \ case
+    n^.projected._2 $$ find >=> read >=> \ case
       Root -> return $ Map.insert n Green colors
-      Binder bf s' -> find s' >>= read |> fmap $
+      Binder bf s' -> find s' >>= read $$ fmap $
         flip (Map.insert n) colors <<< (colors!) >>> (bf,) >>> \ case
           (Flexible, Green) -> Green
           (Rigid, _) -> Orange
@@ -92,7 +92,7 @@ getPermissions t = do
       _ | poly $ n^.projected._3 -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just morphism -> Just morphism) n
-    n^.projected._2 |> find >=> read >=> \ case
+    n^.projected._2 $$ find >=> read >=> \ case
       Root -> return ()
       Binder bf s' -> do
         n' <- read =<< find s'

@@ -1,5 +1,5 @@
-module Function ((|>)) where
+module Function (($$)) where
 
-infixr 0 |>
-(|>) :: a -> (a -> b) -> b
-(|>) = flip ($)
+infixr 0 $$
+($$) :: a -> (a -> b) -> b
+($$) = flip ($)
