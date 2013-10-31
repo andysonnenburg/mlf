@@ -1,26 +1,35 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
+  , DeriveGeneric
   , DeriveTraversable
   , FlexibleContexts
   , FlexibleInstances
   , LambdaCase
+  , MultiParamTypeClasses
   , Rank2Types
   , StandaloneDeriving
   , UndecidableInstances
   , ViewPatterns #-}
 module Type.Syntactic
-       ( MonoType (..)
+       ( module Type.BindingFlag
+       , MonoType (..)
+       , var
+       , arr
        , PolyType (..)
-       , BindingFlag (..)
+       , mono
+       , bot
+       , forall
        ) where
 
 import Control.Applicative
 import Control.Comonad.Env (ComonadEnv)
+import Control.Lens
 
 import Data.Foldable
 import Data.Function (fix)
-import Data.Traversable
+
+import GHC.Generics (Generic)
 
 import System.Console.Terminfo.PrettyPrint
 
@@ -32,7 +41,7 @@ import Type.BindingFlag
 data MonoType w a
   = Var a
   | Arr (w (MonoType w a)) (w (MonoType w a))
-  deriving (Functor, Foldable, Traversable)
+  deriving (Functor, Foldable, Traversable, Generic)
 deriving instance ( Show a
                   , Show (w (MonoType w a))
                   ) => Show (MonoType w a)
@@ -56,11 +65,22 @@ instance FunctorHoist MonoType where
     Var x -> Var x
     Arr a b -> Arr (f $ rec <$> a) (f $ rec <$> b)
 
+instance VariantA (MonoType w a) (MonoType w a) a a
+instance VariantB
+         (MonoType w a) (MonoType w a)
+         (w (MonoType w a), w (MonoType w a)) (w (MonoType w a), w (MonoType w a))
+
+var :: Prism' (MonoType w a) a
+var = _A
+
+arr :: Prism' (MonoType w a) (w (MonoType w a), w (MonoType w a))
+arr = _B
+
 data PolyType w a
   = Mono (MonoType w a)
   | Bot
   | Forall a BindingFlag (w (PolyType w a)) (w (PolyType w a))
-  deriving (Functor, Foldable, Traversable)
+  deriving (Functor, Foldable, Traversable, Generic)
 deriving instance ( Show a
                   , Show (w (MonoType w a))
                   , Show (w (PolyType w a))
@@ -102,3 +122,20 @@ instance FunctorHoist PolyType where
     Mono t -> Mono $ hoist f t
     Bot -> Bot
     Forall a bf o o' -> Forall a bf (f $ rec <$> o) (f $ rec <$> o')
+
+instance VariantA (PolyType w a) (PolyType w a) (MonoType w a) (MonoType w a)
+instance VariantB (PolyType w a) (PolyType w a) () ()
+instance VariantC
+         (PolyType w a)
+         (PolyType w a)
+         (a, BindingFlag, w (PolyType w a), w (PolyType w a))
+         (a, BindingFlag, w (PolyType w a), w (PolyType w a))
+
+mono :: Prism' (PolyType w a) (MonoType w a)
+mono = _A
+
+bot :: Prism' (PolyType w a) ()
+bot = _B
+
+forall :: Prism' (PolyType w a) (a, BindingFlag, w (PolyType w a), w (PolyType w a))
+forall = _C

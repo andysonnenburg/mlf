@@ -9,13 +9,17 @@
   , MultiParamTypeClasses
   , TypeFamilies #-}
 module Type.Graphic
-       ( module Type.Node
+       ( module Type.BindingFlag
+       , module Type.Node
        , Type
        , BoundNode
        , Bound (..)
-       , Term (..)
        , Binding (..)
-       , BindingFlag (..)
+       , root
+       , binder
+       , Term (..)
+       , bot
+       , arr
        , fromRestricted
        , toSyntactic
        ) where
@@ -67,7 +71,17 @@ data Binding a
                                    , Functor
                                    , Foldable
                                    , Traversable
+                                   , Generic
                                    )
+
+instance VariantA (Binding a) (Binding a) () ()
+instance VariantB (Binding a) (Binding b) (BindingFlag, a) (BindingFlag, b)
+
+root :: Prism' (Binding a) ()
+root = _A
+
+binder :: Prism (Binding a) (Binding b) (BindingFlag, a) (BindingFlag, b)
+binder = _B
 
 data Term a
   = Bot
@@ -75,7 +89,17 @@ data Term a
                      , Functor
                      , Foldable
                      , Traversable
+                     , Generic
                      )
+
+instance VariantA (Term a) (Term a) () ()
+instance VariantB (Term a) (Term b) (a, a) (b, b)
+
+bot :: Prism (Term a) (Term a) () ()
+bot = _A
+
+arr :: Prism (Term a) (Term b) (a, a) (b, b)
+arr = _B
 
 fromRestricted :: (MonadST m, MonadSupply Int m)
                => R.Type (Name a) -> m (Type (World m) (Maybe a))
