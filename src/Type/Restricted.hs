@@ -60,9 +60,8 @@ bot = _C
 forall :: Prism' (Type a) (a, BindingFlag, Type a, Type a)
 forall = _D
 
-fromSyntactic :: ( Comonad w
-                 , MonadSupply Int m
-                 ) => w (PolyType w (Name a)) -> m (Type (Name a))
+fromSyntactic :: (Comonad w, MonadSupply Int m)
+              => w (PolyType w (Name a)) -> m (Type (Name a))
 fromSyntactic = fromPoly
   where
     fromPoly = fix $ \ rec -> extract >>> \ case

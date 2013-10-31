@@ -9,6 +9,9 @@ before_install:
  - sudo apt-get install alex happy cpphs cabal-install-1.18 ghc-$GHCVER
  - export PATH=/opt/ghc/$GHCVER/bin:$PATH
  - git submodule update --init --recursive
+ - cd lens
+ - cabal-1.18 install
+ - cd ..
 
 install:
  - cabal-1.18 update
