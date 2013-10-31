@@ -59,6 +59,7 @@ executable mlf
     cmdargs,
     comonad,
     comonads-fd,
+    constraints,
     containers,
     free,
     hashable,

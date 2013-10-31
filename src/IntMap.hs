@@ -58,6 +58,10 @@ instance IsInt k => At (IntMap k v) where
     where
       mv = lookup k m
 
+instance IsInt k => Contains (IntMap k v) where
+  contains = containsLookup lookup
+  {-# INLINE contains #-}
+
 (!) :: IsInt k => IntMap k v -> k -> v
 m!k = unIntMap m Internal.! toInt k
 

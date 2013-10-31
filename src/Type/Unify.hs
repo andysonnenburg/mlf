@@ -1,8 +1,10 @@
 {-# LANGUAGE
-    FlexibleContexts
+    DeriveGeneric
+  , FlexibleContexts
+  , FlexibleInstances
   , LambdaCase
+  , MultiParamTypeClasses
   , RecordWildCards
-  , TupleSections
   , TypeFamilies #-}
 module Type.Unify
        ( UnifyError (..)
@@ -13,6 +15,7 @@ import Control.Applicative
 import Control.Category ((>>>))
 import Control.Comonad
 import Control.Lens
+import Control.Lens.Extras
 import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -21,11 +24,12 @@ import Data.Foldable hiding (find)
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>), mempty)
 
+import GHC.Generics (Generic)
+
 import Text.PrettyPrint.Free (Pretty (pretty), (<+>), text)
 
 import Prelude hiding (foldr, read)
 
-import Applicative ((<$$>))
 import Hoist
 import Id
 import Int
@@ -62,26 +66,34 @@ instance Pretty a => Pretty (UnifyError a) where
 unify :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
       => Type s (Maybe a) -> [Type s (Maybe a)] -> m ()
 unify t ts = do
-  t_s <- extract' <$> toSyntactic t
-  bs <- foldlM (\ bs -> find >=> read >=> \ n -> do
-    b <- read <=< find $ n^.projected._2
-    return $ Map.insert n b bs)
-    mempty =<< preorder' t
-  ancestors <- foldlM (\ ancestors -> find >=> read >=> \ n ->
-    find (n^.projected._2) >>= read >>= \ case
-      Root -> return $ Map.insert n mempty ancestors
-      Binder _ s' -> do
-        n' <- read =<< find s'
-        return $ Map.insert n (Set.insert n' $ ancestors!n') ancestors)
-    mempty =<< preorder' t
-  ps <- getPermissions t
-  S {..} <- execStateT (traversePairs_ unify' ts) emptyS
-  rebind t bs merged =<< getPartiallyGrafted t grafted
+  t_s <- t^!syntactic.extracted'
+
+  bs <- foldlM (\ bs -> perform (ref.contents) >=> \ n -> do
+    b <- n^!projected.binding.ref.contents
+    return $ bs&at n ?~ b) mempty =<< t^!preordered'
+
+  -- ancestors <- foldlM (\ ancestors -> perform (ref.contents) >=> \ n ->
+  --   n^!projected.binding.ref.contents >>= \ case
+  --     Root -> return $ ancestors&at n ?~ mempty
+  --     Binder _ s' -> do
+  --       n' <- s'^!ref.contents
+  --       return $ ancestors&at n ?~ (ancestors!n'&contains n' .~ True))
+  --   mempty =<< t^!preordered'
+
+  ps <- t^!permissions
+
+  s <- execStateT (traversePairs_ unify' ts) emptyS
+
+  rebind t bs (s^.merged) =<< getPartiallyGrafted t (s^.grafted)
+
   whenCyclic t $ cyclic t
-  for_ graftedBots $ \ n -> unlessGreen (ps!n) $ t_s `doesNotSubsume` t
-  preorder' t >>= traverse_ (find >=> read >=> \ n -> do
-    b' <- read <=< find $ n^.projected._2
-    whenRed (ps!n) $ unlessM (sameBinding (bs!n) b') $ t_s `doesNotSubsume` t)
+
+  for_ (s^.graftedBots) $ \ n -> unless (ps!n&is green) $ t_s `doesNotSubsume` t
+
+  t^!preordered' >>= traverse_ (perform (ref.contents) >=> \ n ->
+    when (ps!n&is red) $ do
+      b' <- n^!projected.binding.ref.contents
+      unlessM (sameBinding (bs!n) b') $ t_s `doesNotSubsume` t)
   where
     sameBinding = curry $ \ case
       (Root, Root) -> return True
@@ -94,24 +106,21 @@ unify t ts = do
       if r_a == r_b
         then return True
         else (==) <$> read r_a <*> read r_b
-    red = \ case
-      R -> True
-      _ -> False
 
 unify' :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
        => Type s (Maybe a)
        -> Type s (Maybe a)
        -> Unify (Maybe a) m ()
 unify' = fix $ \ rec x y -> do
-  r_x <- find x
-  r_y <- find y
+  r_x <- x^!ref
+  r_y <- y^!ref
   when (r_x /= r_y) $ do
-    n_x <- read r_x
+    n_x <- r_x^!contents
     let b_x = n_x^.projected
-    n_y <- read r_y
+    n_y <- r_y^!contents
     let b_y = n_y^.projected
-    union (b_x^._2) (b_y^._2)
-    case (b_x^._3, b_y^._3) of
+    union (b_x^.binding) (b_y^.binding)
+    case (b_x^.term, b_y^.term) of
       (Bot, Bot) -> do
         n_y `mergedInto` n_x
         union x y
@@ -138,7 +147,7 @@ doesNotSubsume :: (MonadError (UnifyError a) m, MonadST m)
                -> Type (World m) (Maybe a)
                -> m b
 doesNotSubsume t_s t = do
-  t_s' <- extract' <$> toSyntactic t
+  t_s' <- t^!syntactic.extracted'
   throwError $ t_s `DoesNotSubsume` t_s'
 
 rebind :: (MonadST m, s ~ World m)
@@ -148,22 +157,27 @@ rebind :: (MonadST m, s ~ World m)
        -> IntMap (BoundNode s a) (IntSet (BoundNode s a))
        -> m ()
 rebind t0 bs m b2 = void $ foldlM (\ s t -> do
-  n <- read =<< find t
+  n <- t^!ref.contents
+
   b1_n <- fmap (flip lookupMany s) $
           foldlM (\ ns' n_m -> case bs!n_m of
-            Binder _ t' -> Set.insert <$> (find t' >>= read) <*> pure ns'
+            Binder _ t' -> Set.insert <$> (t'^!ref.contents) <*> pure ns'
             Root -> return ns')
           mempty $ Map.findWithDefault (Set.singleton n) n m
-  let b2_n = flip lookupMany s $ fromMaybe mempty $ Map.lookup n b2
+
+  let b2_n = flip lookupMany s $ fromMaybe mempty $ b2^.at n
+
       p = lca' (b1_n <> b2_n)
       bf = foldMap bindingFlag $
            flip lookupMany bs $
            Map.findWithDefault (Set.singleton n) n m
       b' = case Path.uncons p of
         Just (_, n', _) -> Binder bf n'
-        Nothing -> error "rebind"
-  join $ write <$> find (n^.projected._2) <*> pure b'
-  return $ Map.insert n (Path.cons (n^.int) t p) s) mempty =<< preorder' t0
+        Nothing -> Root
+
+  join $ write <$> n^!projected.binding.ref <*> pure b'
+
+  return $ s&at n ?~ Path.cons (n^.int) t p) mempty =<< t0^!preordered'
   where
     lca' = list Path.empty (foldl' lca)
     bindingFlag = \ case
@@ -178,79 +192,82 @@ getPartiallyGrafted :: (MonadST m, s ~ World m)
 getPartiallyGrafted t0 g =
   flip execStateT mempty $
   fix (\ rec t -> do
-    n <- read =<< find t
+    n <- t^!ref.contents
     whenM (gets $ Map.notMember n) $
-      let c = n^.projected._3 in
+      let c = n^.projected.term in
       if Set.member n g
       then do
         modify $ insertEmpty n
-        case c of
-          Bot -> return ()
-          Arr t_a t_b -> do
-            t_a `graftedUnder` n
-            t_b `graftedUnder` n
-      else case c of
-        Bot -> return ()
-        Arr t_a t_b -> do
-          rec t_a
-          rec t_b) t0
+        traverse_ (`graftedUnder` n) c
+      else traverse_ rec c) t0
   where
     t `graftedUnder` n' = do
-      n <- read =<< find t
-      walked <- gets $ Map.member n
+      n <- t^!ref.contents
+      walked <- use $ contains n
       modify $ insertOne n n'
-      unless walked $ case n^.projected._3 of
-        Bot -> return ()
-        Arr t_a t_b -> do
-          t_a `graftedUnder` n
-          t_b `graftedUnder` n
-    insertOne k v = Map.alter (Just . \ case
+      unless walked $ traverse_ (`graftedUnder` n) $ n^.projected.term
+    insertOne k v = at k %~ Just . \ case
       Nothing -> Set.singleton v
-      Just vs -> Set.insert v vs) k
-    insertEmpty k = Map.insert k mempty
+      Just vs -> vs&contains v .~ True
+    insertEmpty k = at k ?~ mempty
 
 type Unify a m = StateT (S (World m) a) m
 
-data S s a = S { graftedBots :: IntSet (BoundNode s a)
-               , grafted :: IntSet (BoundNode s a)
-               , merged :: IntMap (BoundNode s a) (IntSet (BoundNode s a))
-               }
+data S s a =
+  S
+  (IntSet (BoundNode s a))
+  (IntSet (BoundNode s a))
+  (IntMap (BoundNode s a) (IntSet (BoundNode s a))) deriving Generic
+
+instance Field1 (S s a) (S s a) (IntSet (BoundNode s a)) (IntSet (BoundNode s a))
+instance Field2 (S s a) (S s a) (IntSet (BoundNode s a)) (IntSet (BoundNode s a))
+instance Field3
+         (S s a)
+         (S s a)
+         (IntMap (BoundNode s a) (IntSet (BoundNode s a)))
+         (IntMap (BoundNode s a) (IntSet (BoundNode s a)))
+
+graftedBots :: Lens' (S s a) (IntSet (BoundNode s a))
+graftedBots = _1
+
+grafted :: Lens' (S s a) (IntSet (BoundNode s a))
+grafted = _2
+
+merged :: Lens' (S s a) (IntMap (BoundNode s a) (IntSet (BoundNode s a)))
+merged = _3
 
 emptyS :: S s a
 emptyS = S mempty mempty mempty
 
 graftedAt :: (MonadST m, s ~ World m)
           => BoundNode s a -> BoundNode s a -> Unify a m ()
-n `graftedAt` bot = modify $ \ s@S {..} ->
-  s { graftedBots = Set.insert bot graftedBots
-    , grafted = Set.insert n grafted
-    }
+n `graftedAt` x = modify $ \ s -> s
+  &graftedBots.contains x .~ True
+  &grafted.contains n .~ True
 
 mergedInto :: (MonadST m, s ~ World m)
            => BoundNode s a -> BoundNode s a -> Unify a m ()
-x `mergedInto` y = modify $ \ s@S {..} ->
-  s { merged = Map.alter
-               (Just .
-                maybe (Set.insert x) (<>) (Map.lookup x merged) .
-                fromMaybe (Set.singleton y)) y $
-               Map.delete x merged }
+x `mergedInto` y = modify $ \ s -> s
+  &merged.at x .~ Nothing
+  &merged.at y %~ Just .
+  maybe (contains x .~ True) (<>) (s^.merged.at x) . fromMaybe (Set.singleton y)
 
 whenCyclic :: MonadST m => Type (World m) a -> m () -> m ()
 whenCyclic t0 m =
   flip runReaderT mempty $
   flip evalStateT mempty $
   fix (\ rec t -> do
-    n <- read =<< find t
+    n <- t^!ref.contents
     whenM (gets $ Set.notMember n) $ do
       whenM (asks $ Set.member n) $ lift $ lift m
       case n^.projected._3 of
         Bot -> return ()
-        Arr t_a t_b -> local (Set.insert n) $ rec t_a >> rec t_b
-      modify $ Set.insert n) t0
+        Arr t_a t_b -> local (contains n .~ True) $ rec t_a >> rec t_b
+      contains n .= True) t0
 
-preorder' :: (MonadST m, s ~ World m, Foldable f)
-          => Set s (Node s f) -> m [Set s (Node s f)]
-preorder' s = find s >>= read >>= \ n -> preorder n <$$> (s:)
+preordered' :: (MonadST m, s ~ World m, Foldable f)
+            => IndexPreservingAction m (Set s (Node s f)) [Set s (Node s f)]
+preordered' = act $ \ t -> t^!ref.contents.preordered.to (t <|)
 
 traversePairs_ :: (Foldable t, Applicative f) => (a -> a -> f ()) -> t a -> f ()
 traversePairs_ f = toList >>> \ case

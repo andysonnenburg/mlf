@@ -1,16 +1,18 @@
 {-# LANGUAGE
-    FlexibleInstances
+    DeriveGeneric
+  , FlexibleInstances
   , LambdaCase
   , MultiParamTypeClasses
   , Rank2Types
   , TypeFamilies #-}
 module Type.Permission
        ( Permission (..)
-       , unlessGreen
-       , whenRed
+       , green
+       , red
        , toScopedEffect
        , Permissions
        , getPermissions
+       , permissions
        ) where
 
 import Control.Applicative
@@ -24,8 +26,10 @@ import Data.Profunctor.Unsafe ((#.))
 import Data.Semigroup (Semigroup, (<>))
 import Data.Monoid (First (..), mappend, mempty)
 
+import GHC.Generics (Generic)
+
 import qualified System.Console.Terminfo.Color as Terminfo
-import System.Console.Terminfo.PrettyPrint
+import System.Console.Terminfo.PrettyPrint (ScopedEffect (Foreground), soft)
 
 import Prelude hiding (read)
 
@@ -36,26 +40,30 @@ import ST
 import Type.Graphic
 import UnionFind
 
-data Permission = M | I | G | O | R deriving Show
+data Permission = M | I | G | O | R deriving (Show, Generic)
 
-unlessGreen :: Monad m => Permission -> m () -> m ()
-unlessGreen G _ = return ()
-unlessGreen _ m = m
+instance VariantA Permission Permission () ()
+instance VariantB Permission Permission () ()
+instance VariantC Permission Permission () ()
+instance VariantD Permission Permission () ()
+instance VariantE Permission Permission () ()
 
-whenRed :: Monad m => Permission -> m () -> m ()
-whenRed R m = m
-whenRed _ _ = return ()
+green :: Prism' Permission ()
+green = _C
+
+red :: Prism' Permission ()
+red = _E
 
 toScopedEffect :: Permission -> ScopedEffect
 toScopedEffect = soft . Foreground . \ case
   M -> Terminfo.White
   I -> Terminfo.Yellow
   G -> Terminfo.Green
-  O -> orange
+  O -> orangeColor
   R -> Terminfo.Red
 
-orange :: Terminfo.Color
-orange = Terminfo.ColorNumber 202
+orangeColor :: Terminfo.Color
+orangeColor = Terminfo.ColorNumber 202
 
 type Permissions s f = IntMap (Node s f) Permission
 
@@ -97,7 +105,7 @@ getPermissions t = do
           (Flexible, _) -> Red) mempty =<< n0^!preordered.to (t <|)
   morphisms <- flip execStateT mempty $ traverse_ (perform (ref.contents) >=> \ n -> do
     at n %= \ case
-      _ | is bot $ n^.projected.term -> Just Polymorphic
+      _ | n^.projected.term&is bot -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just morphism -> Just morphism
     whenM (projected.binding.ref.contents.binder) n $ \ (bf, s') -> do
@@ -109,6 +117,10 @@ getPermissions t = do
         (Rigid, _) -> Inert
         _ -> Polymorphic) =<< n0^!postordered.to (|> t)
   return $ Map.intersectionWith (fromMorphism . fromColor) colors morphisms
+
+permissions :: (MonadST m, s ~ World m)
+            => IndexPreservingAction m (Type s a) (Permissions s (Bound s a))
+permissions = act getPermissions
 
 at' :: (IsInt k, Semigroup v) => k -> Lens' (IntMap k v) (Maybe v)
 {-# INLINE at' #-}
@@ -123,6 +135,12 @@ whenM :: Monad m => FirstActing m a s a -> s -> (a -> m ()) -> m ()
 whenM l s f = (getFirstEffect #. l (FirstEffect #. return . First #. Just)) s >>= (\ case
   Nothing -> return ()
   Just a -> f a) . getFirst
+
+unlessM :: Monad m => FirstActing m a s a -> s -> m () -> m ()
+{-# INLINE unlessM #-}
+unlessM l s m = (getFirstEffect #. l (FirstEffect #. return . First #. Just)) s >>= (\ case
+  Nothing -> m
+  Just _ -> return ()) . getFirst
 
 type FirstActing m r s a = LensLike (FirstEffect m r) s s a a
 

@@ -24,6 +24,7 @@ module Type.Graphic
        , arr
        , fromRestricted
        , toSyntactic
+       , syntactic
        ) where
 
 import Control.Applicative
@@ -143,7 +144,7 @@ toSyntactic :: MonadST m
             => Type (World m) (Maybe a)
             -> m (Product Int (S.PolyType (Product Int) (Name a)))
 toSyntactic t0 = do
-  bns <- getBoundNodes t0
+  bns <- t0^!boundNodes
   fix (\ rec n0 -> do
     t_s0 <- case n0^.projected.term of
       Bot -> return $ toInt n0 :* S.Bot
@@ -158,10 +159,19 @@ toSyntactic t0 = do
     nodeForall n bf o o' = toInt n :* S.Forall (nodeName n) bf o o'
     nodeName n = Name (n^.int) (n^.projected._1)
 
-getBoundNodes :: (MonadST m, s ~ World m)
-              => Type s a
-              -> m (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
-getBoundNodes = perform (ref.contents.preordered) >=> foldlM (\ ns ->
+syntactic :: MonadST m
+          => IndexPreservingAction
+             m
+             (Type (World m) (Maybe a))
+             (Product Int (S.PolyType (Product Int) (Name a)))
+syntactic = act toSyntactic
+
+boundNodes :: (MonadST m, s ~ World m)
+           => IndexPreservingAction
+              m
+              (Type s a)
+              (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
+boundNodes = act $ perform (ref.contents.preordered) >=> foldlM (\ ns ->
   perform (ref.contents) >=> \ n -> n^!projected.binding.ref.contents >>= \ case
     Root -> return ns
     Binder bf s' -> s'^!ref.contents <&> \ n' -> ns&at n' %~ \ case
