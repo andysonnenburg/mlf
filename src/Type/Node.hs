@@ -11,8 +11,10 @@ module Type.Node
        , newNode
        , project
        , projected
-       , postorder
        , preorder
+       , preordered
+       , postorder
+       , postordered
        ) where
 
 import Control.Applicative
@@ -57,17 +59,25 @@ projected = to project
 preorder :: (MonadST m, s ~ World m, Foldable f)
          => Node s f -> m [Set s (Node s f)]
 preorder (Node x0 f0) = evalStateT (fix (\ rec -> foldrM $ \ s ss ->
-  find s >>= read >>= \ (Node x f) -> gets (Set.member x) >>= \ case
+  s^!ref.contents >>= \ (Node x f) -> use (contains x) >>= \ case
     True -> return ss
     False -> do
-      modify $ Set.insert x
-      (s:) <$> rec ss f) mempty f0) $ Set.singleton x0
+      contains x .= True
+      (s <|) <$> rec ss f) mempty f0) $ Set.singleton x0
+
+preordered :: (MonadST m, s ~ World m, Foldable f)
+           => IndexPreservingAction m (Node s f) [Set s (Node s f)]
+preordered = act preorder
 
 postorder :: (MonadST m, s ~ World m, Foldable f)
           => Node s f -> m [Set s (Node s f)]
 postorder (Node x0 f0) = evalStateT (fix (\ rec -> foldlM $ \ ss s ->
-  find s >>= read >>= \ (Node x f) -> gets (Set.member x) >>= \ case
+  s^!ref.contents >>= \ (Node x f) -> use (contains x) >>= \ case
     True -> return ss
     False -> do
-      modify $ Set.insert x
-      rec (s:ss) f) mempty f0) $ Set.singleton x0
+      contains x .= True
+      rec (s <| ss) f) mempty f0) $ Set.singleton x0
+
+postordered :: (MonadST m, s ~ World m, Foldable f)
+            => IndexPreservingAction m (Node s f) [Set s (Node s f)]
+postordered = act postorder

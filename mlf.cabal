@@ -64,6 +64,7 @@ executable mlf
     hashable,
     lens >= 4.0,
     mtl,
+    profunctors,
     semigroupoids,
     semigroups,
     tagged,

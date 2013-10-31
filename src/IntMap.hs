@@ -1,7 +1,8 @@
 {-# LANGUAGE
     DeriveFoldable
   , DeriveFunctor
-  , DeriveTraversable #-}
+  , DeriveTraversable
+  , TypeFamilies #-}
 module IntMap
        ( IntMap
        , (!)
@@ -17,10 +18,12 @@ module IntMap
        , toIntMap
        ) where
 
+import Control.Applicative
+import Control.Lens
+
 import Data.Foldable
 import qualified Data.IntMap.Strict as Internal
 import Data.Semigroup (Monoid (..), Semigroup (..))
-import Data.Traversable
 
 import Prelude hiding (lookup)
 
@@ -39,6 +42,21 @@ instance Monoid (IntMap k v) where
   mempty = IntMap mempty
   mappend x y = IntMap $ mappend (unIntMap x) (unIntMap y)
   mconcat = IntMap . mconcat . fmap unIntMap
+
+type instance Index (IntMap k v) = k
+
+type instance IxValue (IntMap k v) = v
+instance IsInt k => Ixed (IntMap k v) where
+  ix k f m = case lookup k m of
+    Just v -> indexed f k v <&> \ v' -> insert k v' m
+    Nothing -> pure m
+
+instance IsInt k => At (IntMap k v) where
+  at k f m = indexed f k mv <&> \ r -> case r of
+    Nothing -> maybe m (const (delete k m)) mv
+    Just v' -> insert k v' m
+    where
+      mv = lookup k m
 
 (!) :: IsInt k => IntMap k v -> k -> v
 m!k = unIntMap m Internal.! toInt k

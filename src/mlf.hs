@@ -7,8 +7,8 @@
 module Main (main) where
 
 import Control.Applicative
-import Control.Category ((>>>))
 import Control.Comonad.Env (ComonadEnv, ask, extract)
+import Control.Lens
 import Control.Monad.Error (MonadError)
 import Control.Monad.ST.Safe
 import Control.Monad.State.Strict
@@ -43,7 +43,7 @@ import ST
 import qualified Stream
 import Sum
 import Supply
-import Type.Graphic (Bound (Bound), preorder, project)
+import Type.Graphic (Bound (Bound), preordered, projected)
 import qualified Type.Graphic as Graphic
 import Type.Permission (getPermissions)
 import qualified Type.Permission as Permission
@@ -113,9 +113,9 @@ getTypes :: (MonadST m, s ~ World m)
          => [String]
          -> Graphic.Type s (Maybe Text)
          -> m [Graphic.Type s (Maybe Text)]
-getTypes xs = find >=> read >=> preorder >=> foldlM (\ ts t ->
-  find t >>= read $$ fmap $ project >>> \ case
-    Bound (Just y) _ _ | Set.member y ys -> t:ts
+getTypes xs = perform (ref.contents.preordered) >=> foldlM (\ ts t ->
+  t^!ref.contents.projected <&> \ case
+    Bound (Just y) _ _ | ys^.contains y -> t <| ts
     _ -> ts) mempty
   where
     ys = Set.fromList $ Text.pack <$> xs

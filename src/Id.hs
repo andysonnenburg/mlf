@@ -12,7 +12,6 @@ import Control.Comonad
 import Control.Lens
 
 import Data.Foldable (Foldable)
-import Data.Traversable (Traversable)
 
 import GHC.Generics (Generic)
 

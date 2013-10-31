@@ -9,9 +9,11 @@ module UnionFind
        , union
        , unionWith
        , find
-       , write
+       , ref
        , Ref
        , read
+       , write
+       , contents
        ) where
 
 import Control.Applicative
@@ -69,23 +71,29 @@ unionWith f x y = liftST $ do
 
 find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
 find = liftST . fmap (Ref . view _1) . fix (\ rec linkRef -> readSTRef linkRef >>= \ case
-  Repr _ ref -> return $! Two ref linkRef
+  Repr _ r -> return $! Two r linkRef
   Link linkRef' -> do
     x <- rec linkRef'
     writeSTRef linkRef $ Link $ x^._2
     return x) . unSet
 
+ref :: MonadST m => IndexPreservingAction m (Set (World m) a) (Ref (World m) a)
+ref = act find
+
 write :: MonadST m => Ref (World m) a -> a -> m ()
 {-# INLINE write #-}
-write ref = liftST . writeSTRef (unRef ref)
+write r = liftST . writeSTRef (unRef r)
 
 read :: MonadST m => Ref (World m) a -> m a
 {-# INLINE read #-}
 read = liftST . readSTRef . unRef
 
+contents :: MonadST m => IndexPreservingAction m (Ref (World m) a) a
+contents = act read
+
 find' :: Set s a -> ST s (Three s a)
 find' = fix (\ rec linkRef -> readSTRef linkRef >>= \ case
-  Repr rankRef ref -> return $! Three rankRef ref linkRef
+  Repr rankRef r -> return $! Three rankRef r linkRef
   Link linkRef' -> do
     x <- rec linkRef'
     writeSTRef linkRef $ Link $ x^._3
