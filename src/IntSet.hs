@@ -9,6 +9,7 @@ module IntSet
        , member
        , notMember
        , delete
+       , intersection
        ) where
 
 import Control.Lens
@@ -59,3 +60,6 @@ notMember a = IntMap.notMember (toInt a) . unIntSet
 
 delete :: IsInt a => a -> IntSet a -> IntSet a
 delete a = IntSet . IntMap.delete (toInt a) . unIntSet
+
+intersection :: IsInt a => IntSet a -> IntSet b -> IntSet a
+intersection xs ys = IntSet $ IntMap.intersection (unIntSet xs) (unIntSet ys)

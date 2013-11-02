@@ -4,7 +4,7 @@
   , FlexibleInstances
   , LambdaCase
   , MultiParamTypeClasses
-  , RecordWildCards
+  , Rank2Types
   , TypeFamilies #-}
 module Type.Unify
        ( UnifyError (..)
@@ -22,7 +22,7 @@ import Control.Monad.State.Strict
 
 import Data.Foldable hiding (find)
 import Data.Maybe (fromMaybe)
-import Data.Semigroup ((<>), mempty)
+import Data.Semigroup (Monoid, Semigroup, (<>), mempty)
 
 import GHC.Generics (Generic)
 
@@ -68,19 +68,19 @@ unify :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
 unify t ts = do
   t_s <- t^!syntactic.extracted'
 
+  ps <- t^!permissions
+
   bs <- foldlM (\ bs -> perform (ref.contents) >=> \ n -> do
     b <- n^!projected.binding.ref.contents
     return $ bs&at n ?~ b) mempty =<< t^!preordered'
 
-  -- ancestors <- foldlM (\ ancestors -> perform (ref.contents) >=> \ n ->
-  --   n^!projected.binding.ref.contents >>= \ case
-  --     Root -> return $ ancestors&at n ?~ mempty
-  --     Binder _ s' -> do
-  --       n' <- s'^!ref.contents
-  --       return $ ancestors&at n ?~ (ancestors!n'&contains n' .~ True))
-  --   mempty =<< t^!preordered'
-
-  ps <- t^!permissions
+  bs_plus <- foldlM (\ bs_plus -> perform (ref.contents) >=> \ n ->
+    n^!projected.binding.ref.contents >>= \ case
+      Root -> return $ bs_plus&at n ?~ mempty
+      Binder _ s' -> do
+        n' <- s'^!ref.contents
+        return $ bs_plus&at n ?~ (bs_plus!n'&contains n' .~ True))
+    mempty =<< t^!preordered'
 
   s <- execStateT (traversePairs_ unify' ts) emptyS
 
@@ -90,10 +90,26 @@ unify t ts = do
 
   for_ (s^.graftedBots) $ \ n -> unless (ps!n&is green) $ t_s `doesNotSubsume` t
 
-  t^!preordered' >>= traverse_ (perform (ref.contents) >=> \ n ->
-    when (ps!n&is red) $ do
-      b' <- n^!projected.binding.ref.contents
-      unlessM (sameBinding (bs!n) b') $ t_s `doesNotSubsume` t)
+  traverse_ (perform (ref.contents) >=> \ n ->
+    forOf_ (merged.ix n.folded) s $ \ m -> when (ps!m&is red) $ do
+      b' <- m^!projected.binding.ref.contents
+      unlessM (sameBinding (bs!m) b') $ t_s `doesNotSubsume` t) =<< t^!preordered'
+
+  traverse_ (perform (ref.contents) >=> \ n ->
+    n^!projected.binding.ref.contents >>= \ case
+      Root -> return ()
+      Binder _ s' -> do
+        n' <- s'^!ref.contents
+        let ms = s^.merged.ix' n
+            ms' = s^.merged.ix' n'
+
+            insert m' m t_up = case Map.lookup m' t_up of
+              Just True -> t_s `doesNotSubsume` t
+              _ -> return $ t_up&at m' ?~ (ps!m&is red)
+
+        void $ foldlM (\ t_up m -> foldlM (flip $ \ m' -> insert m' m)
+          t_up (Set.intersection (bs_plus!m) ms'))
+          mempty ms) =<< t^!preordered'
   where
     sameBinding = curry $ \ case
       (Root, Root) -> return True
@@ -165,7 +181,7 @@ rebind t0 bs m b2 = void $ foldlM (\ s t -> do
             Root -> return ns')
           mempty $ Map.findWithDefault (Set.singleton n) n m
 
-  let b2_n = flip lookupMany s $ fromMaybe mempty $ b2^.at n
+  let b2_n = flip lookupMany s $ b2^.ix' n
 
       p = lca' (b1_n <> b2_n)
       bf = foldMap bindingFlag $
@@ -195,21 +211,19 @@ getPartiallyGrafted t0 g =
     n <- t^!ref.contents
     whenM (gets $ Map.notMember n) $
       let c = n^.projected.term in
-      if Set.member n g
+      if g^.contains n
       then do
-        modify $ insertEmpty n
+        at n .= mempty
         traverse_ (`graftedUnder` n) c
       else traverse_ rec c) t0
   where
     t `graftedUnder` n' = do
       n <- t^!ref.contents
       walked <- use $ contains n
-      modify $ insertOne n n'
+      at n %= Just . \ case
+        Nothing -> Set.singleton n'
+        Just ns' -> ns'&contains n' .~ True
       unless walked $ traverse_ (`graftedUnder` n) $ n^.projected.term
-    insertOne k v = at k %~ Just . \ case
-      Nothing -> Set.singleton v
-      Just vs -> vs&contains v .~ True
-    insertEmpty k = at k ?~ mempty
 
 type Unify a m = StateT (S (World m) a) m
 
@@ -260,7 +274,7 @@ whenCyclic t0 m =
     n <- t^!ref.contents
     whenM (gets $ Set.notMember n) $ do
       whenM (asks $ Set.member n) $ lift $ lift m
-      case n^.projected._3 of
+      case n^.projected.term of
         Bot -> return ()
         Arr t_a t_b -> local (contains n .~ True) $ rec t_a >> rec t_b
       contains n .= True) t0
@@ -275,3 +289,7 @@ traversePairs_ f = toList >>> \ case
   x0:xs -> fix (\ rec x -> \ case
     [] -> pure ()
     y:ys -> f x y *> rec y ys) x0 xs
+
+ix' :: (IsInt k, Monoid v) => k -> Lens' (IntMap k v) v
+{-# INLINE ix' #-}
+ix' k f m = f (fromMaybe mempty (Map.lookup k m)) <&> \ v' -> Map.insert k v' m
