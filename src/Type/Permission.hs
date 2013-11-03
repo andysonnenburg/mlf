@@ -15,16 +15,12 @@ module Type.Permission
        , permissions
        ) where
 
-import Control.Applicative
 import Control.Lens
 import Control.Lens.Extras
-import Control.Lens.Internal.Action
 import Control.Monad.State.Strict
 
 import Data.Foldable (foldlM, traverse_)
-import Data.Profunctor.Unsafe ((#.))
-import Data.Semigroup (Semigroup, (<>))
-import Data.Monoid (First (..), mappend, mempty)
+import Data.Semigroup (Semigroup, (<>), mempty)
 
 import GHC.Generics (Generic)
 
@@ -103,20 +99,22 @@ getPermissions t = do
           (Flexible, Green) -> Green
           (Rigid, _) -> Orange
           (Flexible, _) -> Red) mempty =<< n0^!preordered.to (t <|)
-  morphisms <- flip execStateT mempty $ traverse_ (perform (ref.contents) >=> \ n -> do
+  morphisms <- run $ traverse_ (perform (ref.contents) >=> \ n -> do
     at n %= \ case
       _ | n^.projected.term&is bot -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just morphism -> Just morphism
-    whenM (projected.binding.ref.contents.binder) n $ \ (bf, s') -> do
+    n^!?projected.binding.ref.contents.binder >>= traverse_ (\ (bf, s') -> do
       morphisms <- get
       n' <- s'^!ref.contents
       at' n' ?= case (bf, morphisms!n) of
         (_, Inert) -> Inert
         (_, Monomorphic) -> Monomorphic
         (Rigid, _) -> Inert
-        _ -> Polymorphic) =<< n0^!postordered.to (|> t)
+        _ -> Polymorphic)) =<< n0^!postordered.to (|> t)
   return $ Map.intersectionWith (fromMorphism . fromColor) colors morphisms
+  where
+    run = flip execStateT mempty
 
 permissions :: (MonadST m, s ~ World m)
             => IndexPreservingAction m (Type s a) (Permissions s (Bound s a))
@@ -129,39 +127,3 @@ at' k f m = f mv <&> \ r -> case r of
   Just v' -> Map.insertWith (<>) k v' m
   where
     mv = Map.lookup k m
-
-whenM :: Monad m => FirstActing m a s a -> s -> (a -> m ()) -> m ()
-{-# INLINE whenM #-}
-whenM l s f = (getFirstEffect #. l (FirstEffect #. return . First #. Just)) s >>= (\ case
-  Nothing -> return ()
-  Just a -> f a) . getFirst
-
-unlessM :: Monad m => FirstActing m a s a -> s -> m () -> m ()
-{-# INLINE unlessM #-}
-unlessM l s m = (getFirstEffect #. l (FirstEffect #. return . First #. Just)) s >>= (\ case
-  Nothing -> m
-  Just _ -> return ()) . getFirst
-
-type FirstActing m r s a = LensLike (FirstEffect m r) s s a a
-
-newtype FirstEffect m r a = FirstEffect { getFirstEffect :: m (First r) }
-
-instance Functor (FirstEffect m r) where
-  {-# INLINE fmap #-}
-  fmap _ = FirstEffect . getFirstEffect
-
-instance Contravariant (FirstEffect m r) where
-  {-# INLINE contramap #-}
-  contramap _ = FirstEffect . getFirstEffect
-
-instance Monad m => Effective m (First r) (FirstEffect m r) where
-  {-# INLINE effective #-}
-  effective = FirstEffect
-  {-# INLINE ineffective #-}
-  ineffective = getFirstEffect
-
-instance Monad m => Applicative (FirstEffect m r) where
-  {-# INLINE pure #-}
-  pure _ = FirstEffect (return mempty)
-  {-# INLINE (<*>) #-}
-  f <*> a = FirstEffect $ liftM2 mappend (getFirstEffect f) (getFirstEffect a)

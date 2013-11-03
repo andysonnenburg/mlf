@@ -88,28 +88,28 @@ unify t ts = do
 
   whenCyclic t $ cyclic t
 
-  for_ (s^.graftedBots) $ \ n -> unless (ps!n&is green) $ t_s `doesNotSubsume` t
+  forOf_ (graftedBots.folded) s $ \ n -> unless (ps!n&is green) $
+    t_s `doesNotSubsume` t
 
   traverse_ (perform (ref.contents) >=> \ n ->
     forOf_ (merged.ix n.folded) s $ \ m -> when (ps!m&is red) $ do
       b' <- m^!projected.binding.ref.contents
-      unlessM (sameBinding (bs!m) b') $ t_s `doesNotSubsume` t) =<< t^!preordered'
+      unlessM (sameBinding (bs!m) b') $
+        t_s `doesNotSubsume` t) =<< t^!preordered'
 
   traverse_ (perform (ref.contents) >=> \ n ->
-    n^!projected.binding.ref.contents >>= \ case
-      Root -> return ()
-      Binder _ s' -> do
-        n' <- s'^!ref.contents
-        let ms = s^.merged.ix' n
-            ms' = s^.merged.ix' n'
+    n^!?projected.binding.ref.contents.binder._2 >>=
+    traverse_ (perform (ref.contents) >=> \ n' -> do
+      let ms = s^.merged.ix' n
+          ms' = fromMaybe (Set.singleton n') $ s^?merged.ix n'
 
-            insert m' m t_up = case Map.lookup m' t_up of
-              Just True -> t_s `doesNotSubsume` t
-              _ -> return $ t_up&at m' ?~ (ps!m&is red)
+          insert m' m t_up = case Map.lookup m' t_up of
+            Just True -> t_s `doesNotSubsume` t
+            _ -> return $ t_up&at m' ?~ (ps!m&is red)
 
-        void $ foldlM (\ t_up m -> foldlM (flip $ \ m' -> insert m' m)
-          t_up (Set.intersection (bs_plus!m) ms'))
-          mempty ms) =<< t^!preordered'
+      void $ foldlM (\ t_up m -> foldlM (flip $ \ m' -> insert m' m) t_up $
+        Set.intersection (bs_plus!m) ms')
+        mempty ms)) =<< t^!preordered'
   where
     sameBinding = curry $ \ case
       (Root, Root) -> return True
@@ -172,18 +172,19 @@ rebind :: (MonadST m, s ~ World m)
        -> IntMap (BoundNode s a) (IntSet (BoundNode s a))
        -> IntMap (BoundNode s a) (IntSet (BoundNode s a))
        -> m ()
-rebind t0 bs m b2 = void $ foldlM (\ s t -> do
+rebind t0 bs m b2 = void $ foldlM (\ ps t -> do
   n <- t^!ref.contents
 
-  b1_n <- fmap (flip lookupMany s) $
+  b1_n <- fmap (flip lookupMany ps) $
           foldlM (\ ns' n_m -> case bs!n_m of
             Binder _ t' -> Set.insert <$> (t'^!ref.contents) <*> pure ns'
             Root -> return ns')
           mempty $ Map.findWithDefault (Set.singleton n) n m
 
-  let b2_n = flip lookupMany s $ b2^.ix' n
+  let b2_n = flip lookupMany ps $ b2^.ix' n
 
-      p = lca' (b1_n <> b2_n)
+      p = lca' $ b1_n <> b2_n
+
       bf = foldMap bindingFlag $
            flip lookupMany bs $
            Map.findWithDefault (Set.singleton n) n m
@@ -193,7 +194,7 @@ rebind t0 bs m b2 = void $ foldlM (\ s t -> do
 
   join $ write <$> n^!projected.binding.ref <*> pure b'
 
-  return $ s&at n ?~ Path.cons (n^.int) t p) mempty =<< t0^!preordered'
+  return $ ps&at n ?~ Path.cons (n^.int) t p) mempty =<< t0^!preordered'
   where
     lca' = list Path.empty (foldl' lca)
     bindingFlag = \ case
@@ -264,7 +265,8 @@ mergedInto :: (MonadST m, s ~ World m)
 x `mergedInto` y = modify $ \ s -> s
   &merged.at x .~ Nothing
   &merged.at y %~ Just .
-  maybe (contains x .~ True) (<>) (s^.merged.at x) . fromMaybe (Set.singleton y)
+                  maybe (contains x .~ True) (<>) (s^.merged.at x) .
+                  fromMaybe (Set.singleton y)
 
 whenCyclic :: MonadST m => Type (World m) a -> m () -> m ()
 whenCyclic t0 m =
@@ -274,9 +276,7 @@ whenCyclic t0 m =
     n <- t^!ref.contents
     whenM (gets $ Set.notMember n) $ do
       whenM (asks $ Set.member n) $ lift $ lift m
-      case n^.projected.term of
-        Bot -> return ()
-        Arr t_a t_b -> local (contains n .~ True) $ rec t_a >> rec t_b
+      local (contains n .~ True) (forOf_ (projected.term.folded) n rec)
       contains n .= True) t0
 
 preordered' :: (MonadST m, s ~ World m, Foldable f)
