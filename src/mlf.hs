@@ -113,8 +113,8 @@ getTypes :: (MonadST m, s ~ World m)
          => [String]
          -> Graphic.Type s (Maybe Text)
          -> m [Graphic.Type s (Maybe Text)]
-getTypes xs = perform (ref.contents.preordered) >=> foldlM (\ ts t ->
-  t^!ref.contents.projected <&> \ case
+getTypes xs = perform (contents.preordered) >=> foldlM (\ ts t ->
+  t^!contents.projected <&> \ case
     Bound (Just y) _ _ | ys^.contains y -> t <| ts
     _ -> ts) mempty
   where

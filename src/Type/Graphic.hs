@@ -42,6 +42,7 @@ import Prelude hiding (read)
 
 import Int
 import IntMap (IntMap, (!))
+import Monad
 import Name
 import Product (Product (..))
 import ST
@@ -52,18 +53,18 @@ import qualified Type.Restricted as R
 import qualified Type.Syntactic as S
 import UnionFind
 
-type Type s a = Set s (BoundNode s a)
+type Type s a = Var s (BoundNode s a)
 
 type BoundNode s a = Node s (Bound s a)
 
 data Bound s a b =
-  Bound a {-# UNPACK #-} !(Set s (Binding b)) !(Term b) deriving Generic
+  Bound a {-# UNPACK #-} !(Var s (Binding b)) !(Term b) deriving Generic
 
 instance Field1 (Bound s a b) (Bound s a' b) a a'
-instance Field2 (Bound s a b) (Bound s a b) (Set s (Binding b)) (Set s (Binding b))
+instance Field2 (Bound s a b) (Bound s a b) (Var s (Binding b)) (Var s (Binding b))
 instance Field3 (Bound s a b) (Bound s a b) (Term b) (Term b)
 
-binding :: Lens' (Bound s a b) (Set s (Binding b))
+binding :: Lens' (Bound s a b) (Var s (Binding b))
 binding = _2
 
 term :: Lens' (Bound s a b) (Term b)
@@ -130,14 +131,10 @@ fromRestricted =
   where
     newBoundNodeSet a b c = new =<< newBoundNode a b c
     newBoundNode a b c = Bound a <$> new b <*> pure c >>= newNode
-    same s_a s_b = do
-      r_a <- s_a^!ref
-      r_b <- s_b^!ref
-      if r_a == r_b
-        then return True
-        else do
-        a <- r_a^!contents
-        b <- r_b^!contents
+    same var_a var_b = do
+      ifM (var_a === var_b) (return True) $ do
+        a <- var_a^!contents
+        b <- var_b^!contents
         return $ a == b
 
 toSyntactic :: MonadST m
@@ -149,11 +146,11 @@ toSyntactic t0 = do
     t_s0 <- case n0^.projected.term of
       Bot -> return $ toInt n0 :* S.Bot
       Arr t_a t_b -> do
-        n_a <- t_a^!ref.contents
-        n_b <- t_b^!ref.contents
+        n_a <- t_a^!contents
+        n_b <- t_b^!contents
         return $ toInt n0 :* S.Mono (S.Arr (nodeVar n_a) (nodeVar n_b))
     foldrM (\ (bf, n) t_s -> nodeForall n bf <$> rec n <*> pure t_s)
-      t_s0 (fromMaybe mempty $ bns^.at n0)) =<< t0^!ref.contents
+      t_s0 (fromMaybe mempty $ bns^.at n0)) =<< t0^!contents
   where
     nodeVar n = toInt n :* S.Var (nodeName n)
     nodeForall n bf o o' = toInt n :* S.Forall (nodeName n) bf o o'
@@ -171,9 +168,9 @@ boundNodes :: (MonadST m, s ~ World m)
               m
               (Type s a)
               (IntMap (BoundNode s a) [(BindingFlag, BoundNode s a)])
-boundNodes = act $ perform (ref.contents.preordered) >=> foldlM (\ ns ->
-  perform (ref.contents) >=> \ n -> n^!projected.binding.ref.contents >>= \ case
+boundNodes = act $ perform (contents.preordered) >=> foldlM (\ ns ->
+  perform contents >=> \ n -> n^!projected.binding.contents >>= \ case
     Root -> return ns
-    Binder bf s' -> s'^!ref.contents <&> \ n' -> ns&at n' %~ \ case
+    Binder bf var' -> var'^!contents <&> \ n' -> ns&at n' %~ \ case
       Nothing -> Just [(bf, n)]
       Just bs -> Just ((bf, n) <| bs)) mempty

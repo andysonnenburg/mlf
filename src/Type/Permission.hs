@@ -34,7 +34,7 @@ import IntMap (IntMap, (!))
 import qualified IntMap as Map
 import ST
 import Type.Graphic
-import UnionFind
+import UnionFind (contents)
 
 data Permission = M | I | G | O | R deriving (Show, Generic)
 
@@ -89,24 +89,24 @@ fromMorphism x = \ case
 getPermissions :: (MonadST m, s ~ World m)
                => Type s a -> m (Permissions s (Bound s a))
 getPermissions t = do
-  n0 <- t^!ref.contents
-  colors <- foldlM (\ colors -> perform (ref.contents) >=> \ n ->
-    n^!projected.binding.ref.contents >>= \ case
+  n0 <- t^!contents
+  colors <- foldlM (\ colors -> perform contents >=> \ n ->
+    n^!projected.binding.contents >>= \ case
       Root -> return $ colors&at n ?~ Green
       Binder bf s' -> do
-        n' <- s'^!ref.contents
+        n' <- s'^!contents
         return $ colors&at n ?~ case (bf, colors!n') of
           (Flexible, Green) -> Green
           (Rigid, _) -> Orange
           (Flexible, _) -> Red) mempty =<< n0^!preordered.to (t <|)
-  morphisms <- run $ traverse_ (perform (ref.contents) >=> \ n -> do
+  morphisms <- run $ traverse_ (perform contents >=> \ n -> do
     at n %= \ case
       _ | n^.projected.term&is bot -> Just Polymorphic
       Nothing -> Just Monomorphic
       Just morphism -> Just morphism
-    n^!?projected.binding.ref.contents.binder >>= traverse_ (\ (bf, s') -> do
+    n^!?projected.binding.contents.binder >>= traverse_ (\ (bf, s') -> do
       morphisms <- get
-      n' <- s'^!ref.contents
+      n' <- s'^!contents
       at' n' ?= case (bf, morphisms!n) of
         (_, Inert) -> Inert
         (_, Monomorphic) -> Monomorphic

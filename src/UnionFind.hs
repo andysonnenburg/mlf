@@ -1,16 +1,16 @@
 {-# LANGUAGE
     DeriveGeneric
+  , FlexibleContexts
   , FlexibleInstances
   , LambdaCase
-  , MultiParamTypeClasses #-}
+  , MultiParamTypeClasses
+  , TypeFamilies #-}
 module UnionFind
-       ( Set
+       ( Var
        , new
        , union
        , unionWith
-       , find
-       , ref
-       , Ref
+       , (===)
        , read
        , write
        , contents
@@ -32,30 +32,30 @@ import Prelude hiding (elem, read)
 import ST
 import STIntRef
 
-newtype Set s a = Set { unSet :: STRef s (Link s a) }
+infix 4 ===
 
-newtype Ref s a = Ref { unRef :: STRef s a } deriving Eq
+newtype Var s a = Var { unVar :: STRef s (Link s a) }
 
 data Link s a
   = Repr {-# UNPACK #-} !(STIntRef s) {-# UNPACK #-} !(STRef s a)
   | Link {-# UNPACK #-} !(STRef s (Link s a))
 
-new :: MonadST m => a -> m (Set (World m) a)
+new :: MonadST m => a -> m (Var (World m) a)
 new =
   liftST <<<
-  fmap Set . newSTRef <=<
+  fmap Var . newSTRef <=<
   liftA2 Repr (newSTIntRef minBound) <<<
   newSTRef
 
-union :: MonadST m => Set (World m) a -> Set (World m) a -> m ()
+union :: (MonadST m, s ~ World m) => Var s a -> Var s a -> m ()
 {-# INLINE union #-}
 union = unionWith const
 
-unionWith :: MonadST m
-          => (a -> a -> a) -> Set (World m) a -> Set (World m) a -> m ()
+unionWith :: (MonadST m, s ~ World m)
+          => (a -> a -> a) -> Var s a -> Var s a -> m ()
 unionWith f x y = liftST $ do
-  Three xRankRef xRef xLinkRef <- find' x
-  Three yRankRef yRef yLinkRef <- find' y
+  Three xRankRef xRef xLinkRef <- x^!repr
+  Three yRankRef yRef yLinkRef <- y^!repr
   when (xRef /= yRef) $
     compare <$> readSTIntRef xRankRef <*> readSTIntRef yRankRef >>= \ case
       LT -> do
@@ -69,43 +69,30 @@ unionWith f x y = liftST $ do
         writeSTRef yLinkRef $ Link xLinkRef
         writeSTRef xRef =<< f <$> readSTRef xRef <*> readSTRef yRef
 
-find :: MonadST m => Set (World m) a -> m (Ref (World m) a)
-find = liftST . fmap (Ref . view _1) . fix (\ rec linkRef -> readSTRef linkRef >>= \ case
-  Repr _ r -> return $! Two r linkRef
-  Link linkRef' -> do
-    x <- rec linkRef'
-    writeSTRef linkRef $ Link $ x^._2
-    return x) . unSet
+(===) :: (MonadST m, s ~ World m) => Var s a -> Var s a -> m Bool
+x === y = liftST $ (==) <$> x^!repr._2 <*> y^!repr._2
 
-ref :: MonadST m => IndexPreservingAction m (Set (World m) a) (Ref (World m) a)
-ref = act find
+repr :: IndexPreservingAction (ST s) (Var s a) (Three s a)
+repr = act find
 
-write :: MonadST m => Ref (World m) a -> a -> m ()
+write :: MonadST m => Var (World m) a -> a -> m ()
 {-# INLINE write #-}
-write r = liftST . writeSTRef (unRef r)
+write var a = liftST $ var^!repr._2 >>= flip writeSTRef a
 
-read :: MonadST m => Ref (World m) a -> m a
+read :: MonadST m => Var (World m) a -> m a
 {-# INLINE read #-}
-read = liftST . readSTRef . unRef
+read = liftST . perform (repr._2.act readSTRef)
 
-contents :: MonadST m => IndexPreservingAction m (Ref (World m) a) a
+contents :: MonadST m => IndexPreservingAction m (Var (World m) a) a
 contents = act read
 
-find' :: Set s a -> ST s (Three s a)
-find' = fix (\ rec linkRef -> readSTRef linkRef >>= \ case
+find :: Var s a -> ST s (Three s a)
+find = fix (\ rec linkRef -> readSTRef linkRef >>= \ case
   Repr rankRef r -> return $! Three rankRef r linkRef
   Link linkRef' -> do
     x <- rec linkRef'
     writeSTRef linkRef $ Link $ x^._3
-    return x) . unSet
-
-data Two s a =
-  Two
-  {-# UNPACK #-} !(STRef s a)
-  {-# UNPACK #-} !(STRef s (Link s a)) deriving Generic
-
-instance Field1 (Two s a) (Two s a) (STRef s a) (STRef s a)
-instance Field2 (Two s a) (Two s a) (STRef s (Link s a)) (STRef s (Link s a))
+    return x) . unVar
 
 data Three s a =
   Three
