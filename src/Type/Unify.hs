@@ -36,6 +36,7 @@ import IntMap (IntMap, (!))
 import qualified IntMap as Map
 import IntSet (IntSet)
 import qualified IntSet as Set
+import List (list)
 import Monad
 import Name
 import Path (lca)
@@ -168,16 +169,14 @@ rebind t0 bs m b2 = void $ foldlM (\ paths t -> do
   n <- t^!contents
   let m_n = m^.at n.to (fromMaybe $ Set.singleton n)  
   b1_n <- m_n^!!folded.projected.binding.contents.binder._2.contents.to (paths!)
-  let b2_n = toListOf (ix' n.folded.to (paths!)) b2
+  let b2_n = toListOf (at n.to (fromMaybe mempty).folded.to (paths!)) b2
       path = lca' $ b1_n <> b2_n
       bf = m_n^.folded.to (bs!).binder._1
-      b' = case path^.to Path.uncons of
-        Just (_, t', _) -> Binder bf t'
-        Nothing -> Root
+      b' = path^.to Path.uncons.pre (folded._2).to (maybe Root (Binder bf))
   join $ write <$> n^!projected.binding <*> pure b'
   return $ paths&at n ?~ Path.cons (n^.int) t path) mempty =<< t0^!preordered'
   where
-    lca' = maybe Path.empty (uncurry $ foldl' lca) . uncons
+    lca' = list Path.empty (foldl' lca) . toList
 
 getPartiallyGrafted :: (MonadST m, s ~ World m)
                     => Type (World m) a
