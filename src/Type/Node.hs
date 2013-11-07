@@ -8,7 +8,7 @@
   , UndecidableInstances #-}
 module Type.Node
        ( Node
-       , newNode
+       , new
        , project
        , projected
        , preorder
@@ -32,7 +32,7 @@ import Prelude hiding (read)
 import Int
 import ST
 import Supply
-import UnionFind
+import UnionFind (Var, contents)
 
 data Node s f = Node {-# UNPACK #-} !Int (f (Var s (Node s f)))
 deriving instance Show (f (Var s (Node s f))) => Show (Node s f)
@@ -47,8 +47,8 @@ instance Hashable (Node s f) where
 instance IsInt (Node s f) where
   toInt (Node x _) = x
 
-newNode :: MonadSupply Int m => f (Var s (Node s f)) -> m (Node s f)
-newNode f = Node <$> supply <*> pure f
+new :: MonadSupply Int m => f (Var s (Node s f)) -> m (Node s f)
+new f = Node <$> supply <*> pure f
 
 project :: Node s f -> f (Var s (Node s f))
 project (Node _ x) = x

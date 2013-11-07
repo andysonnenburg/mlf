@@ -39,7 +39,7 @@ import qualified IntSet as Set
 import List (list)
 import Monad
 import Name
-import Path (lca)
+import Path (Path, lca)
 import qualified Path
 import ST
 import Type.Graphic
@@ -85,35 +85,47 @@ unify t ts = do
 
   rebind t bs (s^.merged) =<< getPartiallyGrafted t (s^.grafted)
 
+  let whenIllegalGraft m = forOf_ (graftedBots.folded) s $ \ n ->
+        unless (ps!n&is green) m
+
+  let whenIllegalRaise m = traverse_ (perform contents >=> \ n ->
+        forOf_ (merged.ix n.folded) s $ \ n_m -> when (ps!n_m&is red) $ do
+          b <- n_m^!projected.binding.contents
+          unlessM (sameBinder (bs!n_m) b) m) =<< t^!preordered'
+
+  let whenIllegalWeaken m = traverse_ (perform contents >=> \ n ->
+        forOf_ (merged.ix n.folded) s $ \ n_m -> when (ps!n_m&is red) $ do
+          b <- n_m^!projected.binding.contents
+          unlessM (sameBindingFlag (bs!n_m) b) m) =<< t^!preordered'
+
+  let whenIllegalMerge m = traverse_ (perform contents >=> \ n ->
+        n^!?projected.binding.contents.binder._2 >>=
+        traverse_ (perform contents >=> \ n' -> do
+          let n_ms = s^.merged.ix n
+              n_ms' = fromMaybe (Set.singleton n') $ s^?merged.ix n'
+
+              insert n_m' n_m t_up = case Map.lookup n_m' t_up of
+                Just True -> m
+                _ -> return $ t_up&at n_m' ?~ (ps!n_m&is red)
+
+          foldlM (\ t_up n_m ->
+                   foldlM (flip $ \ n_m' -> insert n_m' n_m) t_up $
+                   Set.intersection (bs_plus!n_m) n_ms')
+            mempty n_ms)) =<< t^!preordered'
+
   whenCyclic t $ cyclic t
-
-  forOf_ (graftedBots.folded) s $ \ n -> unless (ps!n&is green) $
-    t_s `doesNotSubsume` t
-
-  traverse_ (perform contents >=> \ n ->
-    forOf_ (merged.ix n.folded) s $ \ m -> when (ps!m&is red) $ do
-      b' <- m^!projected.binding.contents
-      unlessM (sameBinding (bs!m) b') $
-        t_s `doesNotSubsume` t) =<< t^!preordered'
-
-  traverse_ (perform contents >=> \ n ->
-    n^!?projected.binding.contents.binder._2 >>=
-    traverse_ (perform contents >=> \ n' -> do
-      let ms = s^.merged.ix' n
-          ms' = fromMaybe (Set.singleton n') $ s^?merged.ix n'
-
-          insert m' m t_up = case Map.lookup m' t_up of
-            Just True -> t_s `doesNotSubsume` t
-            _ -> return $ t_up&at m' ?~ (ps!m&is red)
-
-      void $ foldlM (\ t_up m -> foldlM (flip $ \ m' -> insert m' m) t_up $
-        Set.intersection (bs_plus!m) ms')
-        mempty ms)) =<< t^!preordered'
+  whenIllegalGraft $ t_s `doesNotSubsume` t
+  whenIllegalRaise $ t_s `doesNotSubsume` t
+  whenIllegalWeaken $ t_s `doesNotSubsume` t
+  whenIllegalMerge $ t_s `doesNotSubsume` t
   where
-    sameBinding = curry $ \ case
+    sameBinder = curry $ \ case
       (Root, Root) -> return True
-      (Binder bf_x t_x, Binder bf_y t_y)
-        | bf_x == bf_y -> same t_x t_y
+      (Binder _ t_x, Binder _ t_y) -> same t_x t_y
+      _ -> return False
+    sameBindingFlag = curry $ \ case
+      (Root, Root) -> return True
+      (Binder bf_x _, Binder bf_y _) -> return $ bf_x == bf_y
       _ -> return False
     same var_x var_y = ifM (var_x === var_y) (return True) $
       (==) <$> var_x^!contents <*> var_y^!contents
@@ -167,16 +179,14 @@ rebind :: (MonadST m, s ~ World m)
        -> m ()
 rebind t0 bs m b2 = void $ foldlM (\ paths t -> do
   n <- t^!contents
-  let m_n = m^.at n.to (fromMaybe $ Set.singleton n)  
+  let m_n = fromMaybe (Set.singleton n) $ m^.at n
   b1_n <- m_n^!!folded.projected.binding.contents.binder._2.contents.to (paths!)
-  let b2_n = toListOf (at n.to (fromMaybe mempty).folded.to (paths!)) b2
+  let b2_n = b2^..ix n.folded.to (paths!)
       path = lca' $ b1_n <> b2_n
       bf = m_n^.folded.to (bs!).binder._1
-      b' = path^.to Path.uncons.pre (folded._2).to (maybe Root (Binder bf))
-  join $ write <$> n^!projected.binding <*> pure b'
+      b = maybe Root (Binder bf) $ path^.to Path.uncons&mapped %~ view _2
+  join $ write <$> n^!projected.binding <*> pure b
   return $ paths&at n ?~ Path.cons (n^.int) t path) mempty =<< t0^!preordered'
-  where
-    lca' = list Path.empty (foldl' lca) . toList
 
 getPartiallyGrafted :: (MonadST m, s ~ World m)
                     => Type (World m) a
@@ -188,8 +198,8 @@ getPartiallyGrafted t0 g =
     n <- t^!contents
     whenM (gets $ Map.notMember n) $ do
       at n .= mempty
-      traverseOf_ (projected.term.folded)
-        (if g^.contains n then (`graftedUnder` n) else rec) n) t0
+      forOf_ (projected.term.folded) n $
+        if g^.contains n then (`graftedUnder` n) else rec) t0
   where
     t `graftedUnder` n' = do
       n <- t^!contents
@@ -197,7 +207,7 @@ getPartiallyGrafted t0 g =
       at n %= Just . \ case
         Nothing -> Set.singleton n'
         Just ns' -> ns'&contains n' .~ True
-      unless walked $ traverse_ (`graftedUnder` n) $ n^.projected.term
+      unless walked $ forOf_ (projected.term.folded) n (`graftedUnder` n)
 
 type Unify a m = StateT (S (World m) a) m
 
@@ -263,6 +273,5 @@ traversePairs_ f = toList >>> \ case
     [] -> pure ()
     y:ys -> f x y *> rec y ys) x0 xs
 
-ix' :: (At s, Monoid (IxValue s)) => Index s -> Getter s (IxValue s)
-{-# INLINE ix' #-}
-ix' k = at k.to (fromMaybe mempty)
+lca' :: Foldable f => f (Path a) -> Path a
+lca' = list Path.empty (foldl' lca) . toList
