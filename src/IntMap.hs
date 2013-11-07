@@ -6,6 +6,7 @@
 module IntMap
        ( IntMap
        , (!)
+       , empty
        , insert
        , insertWith
        , delete
@@ -18,7 +19,7 @@ module IntMap
        , toIntMap
        ) where
 
-import Control.Applicative
+import Control.Applicative (pure)
 import Control.Lens
 
 import Data.Foldable
@@ -64,6 +65,9 @@ instance IsInt k => Contains (IntMap k v) where
 
 (!) :: IsInt k => IntMap k v -> k -> v
 m!k = unIntMap m Internal.! toInt k
+
+empty :: IntMap k v
+empty = IntMap Internal.empty
 
 insert :: IsInt k => k -> v -> IntMap k v -> IntMap k v
 insert k v = IntMap . Internal.insert (toInt k) v . unIntMap

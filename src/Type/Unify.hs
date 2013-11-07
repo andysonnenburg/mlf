@@ -69,51 +69,51 @@ unify t ts = do
 
   ps <- t^!permissions
 
-  bs <- foldlM (\ bs -> perform contents >=> \ n -> do
-    b <- n^!projected.binding.contents
-    return $ bs&at n ?~ b) mempty =<< t^!preordered'
+  bs <- mexecStateT $ t^!preordered'.folded.contents.act (\ n ->
+    (at n ?=) =<< n^!projected.binding.contents)
 
-  bs_plus <- foldlM (\ bs_plus -> perform contents >=> \ n ->
+  bs_plus <- mexecStateT $ t^!preordered'.folded.contents.act (\ n ->
     n^!projected.binding.contents >>= \ case
-      Root -> return $ bs_plus&at n ?~ mempty
+      Root -> at n ?= mempty
       Binder _ t' -> do
         n' <- t'^!contents
-        return $ bs_plus&at n ?~ (bs_plus!n'&contains n' .~ True))
-    mempty =<< t^!preordered'
+        gets (!n') <&> contains n' .~ True >>= (at n ?=))
 
-  s <- execStateT (traversePairs_ unify' ts) emptyS
+  s <- execStateT (traversePairs_ unifyTypes ts) emptyS
 
-  rebind t bs (s^.merged) =<< getPartiallyGrafted t (s^.grafted)
+  rebind t bs (s^.merged) (s^.grafted)
 
-  let whenIllegalGraft m = forOf_ (graftedBots.folded) s $ \ n ->
+  let whenCyclic m = flip runReaderT mempty $ mevalStateT $
+        fix (\ rec -> perform contents >=> \ n ->
+          whenM (gets $ Set.notMember n) $ do
+            whenM (asks $ Set.member n) $ lift $ lift m
+            local (contains n .~ True) (forOf_ (projected.term.folded) n rec)
+            contains n .= True) t
+
+      whenIllegalGraft m = forOf_ (graftedBots.folded) s $ \ n ->
         unless (ps!n&is green) m
 
-  let whenIllegalRaise m = traverse_ (perform contents >=> \ n ->
+      whenIllegalRaise m = t^!preordered'.folded.contents.act (\ n ->
+        forOf_ (merged.ix n.folded) s $ \ m_n -> when (ps!m_n&is red) $ do
+          b <- m_n^!projected.binding.contents
+          unlessM (sameBinder (bs!m_n) b) m)
+
+      whenIllegalWeaken m = t^!preordered'.folded.contents.act (\ n ->
         forOf_ (merged.ix n.folded) s $ \ n_m -> when (ps!n_m&is red) $ do
           b <- n_m^!projected.binding.contents
-          unlessM (sameBinder (bs!n_m) b) m) =<< t^!preordered'
+          unlessM (sameBindingFlag (bs!n_m) b) m)
 
-  let whenIllegalWeaken m = traverse_ (perform contents >=> \ n ->
-        forOf_ (merged.ix n.folded) s $ \ n_m -> when (ps!n_m&is red) $ do
-          b <- n_m^!projected.binding.contents
-          unlessM (sameBindingFlag (bs!n_m) b) m) =<< t^!preordered'
-
-  let whenIllegalMerge m = traverse_ (perform contents >=> \ n ->
-        n^!?projected.binding.contents.binder._2 >>=
-        traverse_ (perform contents >=> \ n' -> do
-          let n_ms = s^.merged.ix n
-              n_ms' = fromMaybe (Set.singleton n') $ s^?merged.ix n'
-
-              insert n_m' n_m t_up = case Map.lookup n_m' t_up of
+      whenIllegalMerge m = t^!preordered'.folded.contents.act (\ n ->
+        n^!projected.binding.contents.binder._2.contents.act (\ n' ->
+          let m_ns = s^.merged.ix n
+              m_ns' = fromMaybe (Set.singleton n') $ s^?merged.ix n' in
+          flip evalStateT Map.empty $ for_ m_ns $ \ m_n ->
+            for_ (Set.intersection (bs_plus!m_n) m_ns') $ \ m_n' ->
+              use (at m_n') >>= \ case
                 Just True -> m
-                _ -> return $ t_up&at n_m' ?~ (ps!n_m&is red)
+                _ -> at m_n' ?= (ps!m_n&is red)))
 
-          foldlM (\ t_up n_m ->
-                   foldlM (flip $ \ n_m' -> insert n_m' n_m) t_up $
-                   Set.intersection (bs_plus!n_m) n_ms')
-            mempty n_ms)) =<< t^!preordered'
-
-  whenCyclic t $ cyclic t
+  whenCyclic $ cyclic t
   whenIllegalGraft $ t_s `doesNotSubsume` t
   whenIllegalRaise $ t_s `doesNotSubsume` t
   whenIllegalWeaken $ t_s `doesNotSubsume` t
@@ -130,11 +130,11 @@ unify t ts = do
     same var_x var_y = ifM (var_x === var_y) (return True) $
       (==) <$> var_x^!contents <*> var_y^!contents
 
-unify' :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
-       => Type s (Maybe a)
-       -> Type s (Maybe a)
-       -> Unify (Maybe a) m ()
-unify' = fix $ \ rec var_x var_y -> do
+unifyTypes :: (MonadError (UnifyError a) m, MonadST m, s ~ World m)
+           => Type s (Maybe a)
+           -> Type s (Maybe a)
+           -> Unify (Maybe a) m ()
+unifyTypes = fix $ \ rec var_x var_y -> do
   unlessM (var_x === var_y) $ do
     n_x <- var_x^!contents
     let b_x = n_x^.projected
@@ -159,6 +159,46 @@ unify' = fix $ \ rec var_x var_y -> do
         rec t_x t_y
         rec t_x' t_y'
 
+rebind :: (MonadST m, s ~ World m)
+       => Type s a
+       -> IntMap (BoundNode s a) (Binding (Var s (BoundNode s a)))
+       -> IntMap (BoundNode s a) (IntSet (BoundNode s a))
+       -> IntSet (BoundNode s a)
+       -> m ()
+rebind t0 bs m g = do
+  b2 <- getPartiallyGrafted t0 g
+  mevalStateT $ t0^!preordered'.folded.act (\ t -> do
+    n <- t^!contents
+    let m_n = fromMaybe (Set.singleton n) $ m^.at n
+    b1_n <- m_n^!!folded.projected.binding.contents.binder._2.contents.getElem
+    b2_n <- b2^!!ix n.folded.getElem
+    let path = lca' $ b1_n <> b2_n
+        bf = m_n^.folded.to (bs!).binder._1
+        b = maybe Root (Binder bf) $ path^.to Path.uncons&mapped %~ view _2
+    join $ write <$> n^!projected.binding <*> pure b
+    at n ?= Path.cons (n^.int) t path)
+  where
+    getElem = act $ gets . flip (!)
+
+getPartiallyGrafted :: (MonadST m, s ~ World m)
+                    => Type (World m) a
+                    -> IntSet (BoundNode s a)
+                    -> m (IntMap (BoundNode s a) (IntSet (BoundNode s a)))
+getPartiallyGrafted t0 g = mexecStateT $ fix (\ rec t -> do
+  n <- t^!contents
+  whenM (gets $ Map.notMember n) $ do
+    at n .= mempty
+    forOf_ (projected.term.folded) n $
+      if g^.contains n then (`graftedUnder` n) else rec) t0
+  where
+    t `graftedUnder` n' = do
+      n <- t^!contents
+      walked <- use $ contains n
+      at n %= Just . \ case
+        Nothing -> Set.singleton n'
+        Just ns' -> ns'&contains n' .~ True
+      unless walked $ forOf_ (projected.term.folded) n (`graftedUnder` n)
+
 cyclic :: (MonadError (UnifyError a) m, MonadST m)
        => Type (World m) (Maybe a) -> m b
 cyclic = throwError . Cyclic . extract' <=< toSyntactic
@@ -170,44 +210,6 @@ doesNotSubsume :: (MonadError (UnifyError a) m, MonadST m)
 doesNotSubsume t_s t = do
   t_s' <- t^!syntactic.extracted'
   throwError $ t_s `DoesNotSubsume` t_s'
-
-rebind :: (MonadST m, s ~ World m)
-       => Type s a
-       -> IntMap (BoundNode s a) (Binding (Var s (BoundNode s a)))
-       -> IntMap (BoundNode s a) (IntSet (BoundNode s a))
-       -> IntMap (BoundNode s a) (IntSet (BoundNode s a))
-       -> m ()
-rebind t0 bs m b2 = void $ foldlM (\ paths t -> do
-  n <- t^!contents
-  let m_n = fromMaybe (Set.singleton n) $ m^.at n
-  b1_n <- m_n^!!folded.projected.binding.contents.binder._2.contents.to (paths!)
-  let b2_n = b2^..ix n.folded.to (paths!)
-      path = lca' $ b1_n <> b2_n
-      bf = m_n^.folded.to (bs!).binder._1
-      b = maybe Root (Binder bf) $ path^.to Path.uncons&mapped %~ view _2
-  join $ write <$> n^!projected.binding <*> pure b
-  return $ paths&at n ?~ Path.cons (n^.int) t path) mempty =<< t0^!preordered'
-
-getPartiallyGrafted :: (MonadST m, s ~ World m)
-                    => Type (World m) a
-                    -> IntSet (BoundNode s a)
-                    -> m (IntMap (BoundNode s a) (IntSet (BoundNode s a)))
-getPartiallyGrafted t0 g =
-  flip execStateT mempty $
-  fix (\ rec t -> do
-    n <- t^!contents
-    whenM (gets $ Map.notMember n) $ do
-      at n .= mempty
-      forOf_ (projected.term.folded) n $
-        if g^.contains n then (`graftedUnder` n) else rec) t0
-  where
-    t `graftedUnder` n' = do
-      n <- t^!contents
-      walked <- use $ contains n
-      at n %= Just . \ case
-        Nothing -> Set.singleton n'
-        Just ns' -> ns'&contains n' .~ True
-      unless walked $ forOf_ (projected.term.folded) n (`graftedUnder` n)
 
 type Unify a m = StateT (S (World m) a) m
 
@@ -251,17 +253,6 @@ x `mergedInto` y = modify $ \ s -> s
                   maybe (contains x .~ True) (<>) (s^.merged.at x) .
                   fromMaybe (Set.singleton y)
 
-whenCyclic :: MonadST m => Type (World m) a -> m () -> m ()
-whenCyclic t0 m =
-  flip runReaderT mempty $
-  flip evalStateT mempty $
-  fix (\ rec t -> do
-    n <- t^!contents
-    whenM (gets $ Set.notMember n) $ do
-      whenM (asks $ Set.member n) $ lift $ lift m
-      local (contains n .~ True) (forOf_ (projected.term.folded) n rec)
-      contains n .= True) t0
-
 preordered' :: (MonadST m, s ~ World m, Foldable f)
             => IndexPreservingAction m (Var s (Node s f)) [Var s (Node s f)]
 preordered' = act $ \ t -> t^!contents.preordered.to (t <|)
@@ -272,6 +263,12 @@ traversePairs_ f = toList >>> \ case
   x0:xs -> fix (\ rec x -> \ case
     [] -> pure ()
     y:ys -> f x y *> rec y ys) x0 xs
+
+mevalStateT :: (Monoid s, Monad m) => StateT s m a -> m a
+mevalStateT = flip evalStateT mempty
+
+mexecStateT :: (Monoid s, Monad m) => StateT s m a -> m s
+mexecStateT = flip execStateT mempty
 
 lca' :: Foldable f => f (Path a) -> Path a
 lca' = list Path.empty (foldl' lca) . toList
